@@ -1,4 +1,4 @@
-# Dashboard Production Final
+# DSDashboard
 
 This is the complete production version with a clean normal dashboard mode and a password-protected edit mode.
 
