@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-glow"></div>
+
+    <header class="hero">
+        <div class="hero-left">
+            <h1>Dashboard</h1>
+        </div>
+
+        <div class="hero-center">
+            <form class="google-search" action="https://www.google.com/search" method="GET" target="_blank" rel="noopener">
+                <span aria-hidden="true" class="google-icon">G</span>
+                <input id="searchInput" type="text" name="q" placeholder="Search with Google..." autocomplete="off">
+            </form>
+        </div>
+
+        <div class="hero-right">
+            <button id="editModeButton" class="button button-secondary lock-button" type="button">
+                <span aria-hidden="true">🔒</span>
+                <span>Edit Mode</span>
+            </button>
+        </div>
+    </header>
+
+    <section class="stats-grid" aria-label="Dashboard status summary">
+        <article class="stat-card">
+            <div class="stat-icon services-icon">▦</div>
+            <div>
+                <div class="stat-number" id="servicesCount">0</div>
+                <div class="stat-label">Services</div>
+            </div>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-icon online-icon">✓</div>
+            <div>
+                <div class="stat-number green" id="onlineCount">0</div>
+                <div class="stat-label">Online</div>
+            </div>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-icon offline-icon">×</div>
+            <div>
+                <div class="stat-number red" id="offlineCount">0</div>
+                <div class="stat-label">Offline</div>
+            </div>
+        </article>
+
+        <article class="stat-card">
+            <div class="stat-icon uptime-icon">⌁</div>
+            <div>
+                <div class="stat-number green" id="uptimePercent">0%</div>
+                <div class="stat-label">Uptime</div>
+            </div>
+        </article>
+    </section>
+
+    <section id="editorToolbar" class="editor-toolbar hidden" aria-label="Editor toolbar">
+        <div class="editor-pill active-pill">
+            <span aria-hidden="true">✏</span>
+            <span>Edit Mode Active</span>
+        </div>
+
+        <div class="editor-pill success-pill">
+            <span aria-hidden="true">✓</span>
+            <span>Auto-backup: <strong>enabled</strong></span>
+        </div>
+
+        <button class="button button-secondary" id="toolbarImportButton" type="button">↥ Import</button>
+        <button class="button button-secondary" id="toolbarExportButton" type="button">↧ Export</button>
+        <button class="button button-secondary" id="toolbarViewSiteButton" type="button">👁 View Site</button>
+        <button class="button button-danger" id="toolbarExitButton" type="button">🔒 Exit Edit Mode</button>
+    </section>
+
+    <section id="editModeNotice" class="edit-mode-notice hidden">
+        <div class="notice-icon">i</div>
+        <div>
+            <strong>Edit Mode Active</strong>
+            <p>You can add, edit, delete and reorder sections and hosts. Changes are saved to config.json and backed up automatically.</p>
+        </div>
+    </section>
+
+    <div id="appLayout" class="app-layout">
+        <main id="dashboard" class="dashboard" aria-live="polite"></main>
+
+        <aside id="editSidebar" class="edit-sidebar hidden" aria-label="Edit mode side panels"></aside>
+    </div>
+
+    <section id="editPanels" class="edit-panels hidden" aria-label="Edit mode tools"></section>
+
+    <footer class="footer">
+        <div>Dashboard</div>
+        <div id="updatedAt">Loading...</div>
+    </footer>
+
+    <div id="modalOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+        <div id="modal" class="modal"></div>
+    </div>
+
+    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <input id="importFileInput" class="hidden" type="file" accept="application/json,.json">
+    <input id="restoreFileInput" class="hidden" type="file" accept="application/json,.json">
+
+    <script src="app.js"></script>
+</body>
+</html>
