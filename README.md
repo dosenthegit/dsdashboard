@@ -1,17 +1,9 @@
 # DSDashboard
 
 
-<img width="2172" height="724" alt="image" src="https://github.com/user-attachments/assets/7b63904a-fbf1-4300-b307-af7b90ac7908" />
+![Dashboard](https://github.com/user-attachments/assets/7b63904a-fbf1-4300-b307-af7b90ac7908)
 
-
-
-
-
-
-
-
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/8de41972-cc29-407c-96d2-33cb8476b88e" />
-
+![Settings](https://github.com/user-attachments/assets/8de41972-cc29-407c-96d2-33cb8476b88e)
 
 
 
