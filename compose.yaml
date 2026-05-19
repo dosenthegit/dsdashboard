@@ -1,10 +1,10 @@
 services:
   dashboard:
     build: .
-    container_name: dashboard
+    container_name: dsdashboard
     init: true
     ports:
-      - "8080:3000"
+      - "8083:3000"
     environment:
       TZ: Europe/Stockholm
       NODE_ENV: production
