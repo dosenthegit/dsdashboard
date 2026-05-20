@@ -167,6 +167,18 @@ COOKIE_SECURE=true
 
 Only do that when the browser reaches the dashboard through HTTPS.
 
+
+
+## 🖼️ Adding new icons
+
+New icons can be added directly in: /site/app.js
+
+Inside the icon picker array, simply append new entries. Emoji and text icons are supported.
+
+They will appear instantly in the UI — no rebuild needed.
+
+
+
 ## Useful commands
 
 Rebuild and start:
@@ -191,4 +203,50 @@ Run a manual status check inside the container:
 
 ```bash
 docker exec dashboard /bin/bash /app/check-services.sh
+```
+
+## Docker Run & Docker Compose
+
+📁 Required persistent folders - Start with creating these folders on the host:
+```text
+/your-path/site
+/your-path/data
+```
+
+When not building from source you need to copy the content from the repositorys site/ and data/ folders to yours.
+This will provide you with a basic default setup that you can modify to your own liking.
+
+By doing this before you start the container all your settings, password, backups and modifications to icons etc will be persistent when updating to a new image.
+
+
+## Docker Run
+
+```bash
+docker run -d \
+  --name dsdashboard \
+  --env-file .env \
+  -p 8080:3000 \
+  -v /your-path/site:/site \
+  -v /your-path/data:/data \
+  d0sn/dsdashboard:latest
+```
+
+## Docker Compose (recommended)
+
+```yaml
+services:
+  dsdashboard:
+    image: d0sn/dsdashboard:latest
+    container_name: dsdashboard
+    env_file: .env
+    ports:
+      - "8080:3000"
+    volumes:
+      - /your-path/site:/site
+      - /your-path/data:/data
+    restart: unless-stopped
+
+volumes:
+  dsdashboard-site:
+  dsdashboard-data:
 ```
