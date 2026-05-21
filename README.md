@@ -49,7 +49,7 @@ Edit mode unlocks:
 After extracting, keep the structure like this:
 
 ```text
-dashboard-production-final/
+dsdashboard/
 ├── compose.yaml
 ├── Dockerfile
 ├── server.js
