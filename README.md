@@ -113,27 +113,17 @@ change-me-now
 
 Change it immediately.
 
-## Existing installation using /opt/dashboard/site
 
-If your current files live in `/opt/dashboard/site`, you can either copy this full folder there or adjust the volume in `compose.yaml`:
 
-```yaml
-volumes:
-  - /opt/dashboard/site:/site
-  - /opt/dashboard/data:/data
-```
-
-Then put these frontend files in `/opt/dashboard/site`:
-
+##📁 Persistent folders
 ```text
-index.html
-app.js
-style.css
-config.json
-status.json
+/your-path/site
+/your-path/data
 ```
 
-The root files `server.js`, `Dockerfile`, `compose.yaml`, `start.sh`, `check-services.sh` should stay together in the project root.
+These folder will provide you with a basic default setup that you can modify to your own liking.
+These folders are not included in the docker image and thus persistent when updating the docker image.
+
 
 ## Status checks
 
@@ -204,6 +194,7 @@ Run a manual status check inside the container:
 ```bash
 docker exec dashboard /bin/bash /app/check-services.sh
 ```
+
 
 ## Docker Run & Docker Compose
 
