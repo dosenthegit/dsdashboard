@@ -40,11 +40,12 @@ cp env.example .env
 nano .env
 ```
 
-Replace `DASHBOARD_ADMIN_PASSWORD` with a strong, unique password **before** starting. Then run:
+Replace `DASHBOARD_ADMIN_PASSWORD` with a strong, unique password **before** starting. Both Compose files refuse to start if the variable is missing or empty. Then run:
 
 ```bash
 mkdir -p site data
 chmod 600 .env
+docker compose config -q
 docker compose up -d --build
 docker compose ps
 ```
@@ -62,6 +63,7 @@ cd /opt/dsdashboard
 cp env.example .env
 nano .env
 chmod 600 .env
+docker compose -f compose.hub.yaml config -q
 docker compose -f compose.hub.yaml up -d
 docker compose -f compose.hub.yaml ps
 ```
@@ -89,7 +91,7 @@ docker run -d \
   d0sn/dsdashboard:latest
 ```
 
-> Docker `run` does not apply the Compose file's required-password validation; make sure `.env` has a strong password before starting.
+> Docker `run` does not apply the Compose file's required-password validation; make sure `.env` has a strong password before starting. A placeholder password is not automatically rejected by Compose either.
 
 ## Configuration variables
 
@@ -97,7 +99,7 @@ Copy `env.example` to `.env`. The settings below can be changed:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DASHBOARD_ADMIN_PASSWORD` | In application: `change-me-now` | First-run admin password. **Always override.** |
+| `DASHBOARD_ADMIN_PASSWORD` | Required by Compose | First-run admin password. Compose refuses to start if it is missing or empty. Replace the template value with a strong password. |
 | `SESSION_TIMEOUT_MINUTES` | `30` | Session duration, clamped to 10–480 minutes |
 | `COOKIE_SECURE` | `false` | Set `true` when browsing through HTTPS |
 | `STATUS_INTERVAL` | `60` | Seconds between status checks |
