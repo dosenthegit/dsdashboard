@@ -192,3 +192,25 @@ The frontend's icon picker list is implemented in `/site/app.js`. You can custom
 ## License
 
 See [LICENSE](LICENSE) in this repository.
+
+
+### Maintainers: publishing Docker Hub images
+
+The GitHub Actions workflow `.github/workflows/build.yml` publishes both
+`d0sn/dsdashboard` on Docker Hub and `ghcr.io/<owner>/dsdashboard` on GHCR.
+Every push to `main` updates `latest`; pushing a `vX.Y.Z` Git tag publishes
+version tags. Both `linux/amd64` and `linux/arm64` are built.
+
+In **GitHub → Settings → Secrets and variables → Actions**, set:
+
+- Repository **variable** `DOCKERHUB_USERNAME` to a Docker Hub account with push access to `d0sn/dsdashboard`.
+- Repository **secret** `DOCKERHUB_TOKEN` to that account's Docker Hub access token.
+
+Make sure the `d0sn/dsdashboard` repository exists on Docker Hub and check the
+GitHub Actions run before using the new image. To verify manifest platforms:
+
+```bash
+docker buildx imagetools inspect d0sn/dsdashboard:latest
+```
+
+Never commit the access token or `.env` file.
