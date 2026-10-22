@@ -5,7 +5,6 @@
 
 # Runtime data
 data/
-site/config.json
 site/*.db
 
 # Backups and logs
