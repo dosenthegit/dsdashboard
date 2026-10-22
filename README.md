@@ -1,266 +1,192 @@
 # DSDashboard
 
-
 ![Dashboard](https://github.com/user-attachments/assets/7b63904a-fbf1-4300-b307-af7b90ac7908)
 
 ![Settings](https://github.com/user-attachments/assets/8de41972-cc29-407c-96d2-33cb8476b88e)
 
+A simple dashboard/homepage with HTTP(S) and ping status checks, a password-protected edit mode, configurable sections and cards, import/export, and configuration backups.
 
+## Features
 
+- Dashboard with search, stats, service sections, cards, and dark/light themes
+- Password-protected edit mode, host/section editor, drag and drop, icon and color pickers
+- Configuration import/export and automatic/manual backup and restore
+- HTTP(S) and ping availability checks
+- Server-side sessions, CSRF protection, login rate limiting, and scrypt password hashes
 
+## Requirements
 
+- Docker Engine and Docker Compose plugin (`docker compose`), OR Docker Engine for the `docker run` alternative
+- Available TCP port 8080 on the host (configurable)
+- Writable persistent `site/` and `data/` directories
 
+## Choose an installation method
 
+There are **two different Compose files**:
 
+| Method | File | Use when |
+| --- | --- | --- |
+| Build from GitHub | `compose.yaml` | You have cloned the source repository and want to build it locally |
+| Docker Hub image | `compose.hub.yaml` | You want to deploy the published `d0sn/dsdashboard:latest` image without source code |
 
-This is the complete production version with a clean normal dashboard mode and a password-protected edit mode.
+**Do not run both methods at the same time:** both use container name `dsdashboard` and port 8080 by default.
 
-## What is included
-
-Normal mode shows only the dashboard, search, stats, service sections and cards.
-
-Edit mode unlocks:
-
-- Password-protected edit mode
-- Add, edit and delete hosts
-- Add, edit and delete sections / blocks
-- Drag and drop sorting for sections and hosts
-- Import configuration from config.json
-- Export configuration to config.json
-- Automatic backup before every save
-- Manual backup creation
-- Backup list with download, restore and delete
-- Restore from local config file
-- Icon picker
-- Section color picker
-- Live host preview while editing
-- Mobile preview
-- Toast notifications
-- Dark / light theme switch
-- Server-side config saving to /site/config.json
-- Health/status integration through check-services.sh
-- Production security headers
-- Server-side session cookie with CSRF protection
-- Login rate limiting
-- Password hashing with scrypt
-
-## Folder layout
-
-After extracting, keep the structure like this:
-
-```text
-dsdashboard/
-├── compose.yaml
-├── Dockerfile
-├── server.js
-├── start.sh
-├── check-services.sh
-├── package.json
-├── .env.example
-├── site/
-│   ├── index.html
-│   ├── app.js
-│   ├── style.css
-│   ├── config.json
-│   └── status.json
-└── data/
-    └── backups/
-```
-
-## First start
-
-1. Copy `.env.example` to `.env`:
+### Option A — Build from GitHub
 
 ```bash
-cp .env.example .env
-```
-
-2. Edit `.env` and change the password:
-
-```bash
+git clone https://github.com/dosenthegit/dsdashboard.git
+cd dsdashboard
+cp env.example .env
 nano .env
 ```
 
-Set a real password:
-
-```text
-DASHBOARD_ADMIN_PASSWORD=your-long-secure-password
-```
-
-3. Start the dashboard:
+Replace `DASHBOARD_ADMIN_PASSWORD` with a strong, unique password **before** starting. Then run:
 
 ```bash
+mkdir -p site data
+chmod 600 .env
 docker compose up -d --build
+docker compose ps
 ```
 
-4. Open:
+Open `http://SERVER-IP:8080`.
 
-```text
-http://SERVER-IP:8080
-```
+### Option B — Docker Hub image (recommended for simple deployments)
 
-## Important password note
-
-The password is written as a secure hash to `data/security.json` on first start.
-
-If you start once with the default password and later change `.env`, the old hash in `data/security.json` remains active. Change the password inside the Security panel, or stop the container and remove `data/security.json` before starting again.
-
-Default fallback password, only if you do not set `.env`:
-
-```text
-change-me-now
-```
-
-Change it immediately.
-
-
-
-##📁 Persistent folders
-```text
-/your-path/site
-/your-path/data
-```
-
-These folder will provide you with a basic default setup that you can modify to your own liking.
-These folders are not included in the docker image and thus persistent when updating the docker image.
-
-
-## Status checks
-
-`start.sh` runs `check-services.sh` every 60 seconds by default.
-
-The checker reads:
-
-```text
-/site/config.json
-```
-
-and writes:
-
-```text
-/site/status.json
-```
-
-You can change the interval in `.env`:
-
-```text
-STATUS_INTERVAL=60
-```
-
-## HTTPS / reverse proxy
-
-For internet-facing use, put the dashboard behind HTTPS and set:
-
-```text
-COOKIE_SECURE=true
-```
-
-Only do that when the browser reaches the dashboard through HTTPS.
-
-
-
-## 🖼️ Adding new icons
-
-New icons can be added directly in: /site/app.js
-
-Inside the icon picker array, simply append new entries. Emoji and text icons are supported.
-
-They will appear instantly in the UI — no rebuild needed.
-
-
-
-## Useful commands
-
-Rebuild and start:
+Create a working directory, download **`compose.hub.yaml` and `env.example` from this repository**, and rename the environment template:
 
 ```bash
-docker compose up -d --build
+mkdir -p /opt/dsdashboard/site /opt/dsdashboard/data
+cd /opt/dsdashboard
+# Place compose.hub.yaml and env.example here, then:
+cp env.example .env
+nano .env
+chmod 600 .env
+docker compose -f compose.hub.yaml up -d
+docker compose -f compose.hub.yaml ps
 ```
 
-View logs:
+Replace `DASHBOARD_ADMIN_PASSWORD` with a strong, unique password before the first start. Open `http://SERVER-IP:8080`.
+
+On first start, the app **copies bundled example files from `/sample-site` into `/site` when `/site/config.json` is missing**. You normally do not need to copy the repository's `site/` contents manually when using a matching, current Docker Hub image. **Caution:** when `config.json` is missing, this initialization can overwrite other files in `/site` that share the example filenames. Always back up `site/` before deleting `config.json`.
+
+The Docker Hub image is independently published. If its behavior differs from the GitHub source, verify the image version and its bundled files.
+
+### Option C — Docker run
+
+Use the same `/opt/dsdashboard/.env`, `site/` and `data/` directories prepared in Option B:
 
 ```bash
-docker compose logs -f
-```
-
-Stop:
-
-```bash
-docker compose down
-```
-
-Run a manual status check inside the container:
-
-```bash
-docker exec dashboard /bin/bash /app/check-services.sh
-```
-
-
-## Docker Run & Docker Compose
-
-📁 Required persistent folders - Start with creating these folders on the host:
-```text
-/your-path/site
-/your-path/data
-```
-
-When not building from source you need to copy the content from the repositorys site/ and data/ folders to yours.
-This will provide you with a basic default setup that you can modify to your own liking.
-
-By doing this before you start the container all your settings, password, backups and modifications to icons etc will be persistent when updating to a new image.
-
-
-
-## First start
-
-1. Create `.env`: in your `/your-path/`
-
-
-2. Edit `.env` and add the following enviroment settings.
-
-```text
-# Copy this to .env before first start and change the password.
-DASHBOARD_ADMIN_PASSWORD=change-this-long-password
-SESSION_TIMEOUT_MINUTES=30
-COOKIE_SECURE=false
-STATUS_INTERVAL=60
-STATUS_TIMEOUT=5
-```
-
-Set a real password:
-
-```text
-DASHBOARD_ADMIN_PASSWORD=your-long-secure-password
-```
-
-## Docker Run
-
-```bash
+cd /opt/dsdashboard
 docker run -d \
   --name dsdashboard \
+  --init \
+  --restart unless-stopped \
   --env-file .env \
   -p 8080:3000 \
-  -v /your-path/site:/site \
-  -v /your-path/data:/data \
+  -v /opt/dsdashboard/site:/site \
+  -v /opt/dsdashboard/data:/data \
   d0sn/dsdashboard:latest
 ```
 
-## Docker Compose (recommended)
+> Docker `run` does not apply the Compose file's required-password validation; make sure `.env` has a strong password before starting.
 
-```yaml
-services:
-  dsdashboard:
-    image: d0sn/dsdashboard:latest
-    container_name: dsdashboard
-    env_file: .env
-    ports:
-      - "8080:3000"
-    volumes:
-      - /your-path/site:/site
-      - /your-path/data:/data
-    restart: unless-stopped
+## Configuration variables
 
-volumes:
-  dsdashboard-site:
-  dsdashboard-data:
+Copy `env.example` to `.env`. The settings below can be changed:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DASHBOARD_ADMIN_PASSWORD` | In application: `change-me-now` | First-run admin password. **Always override.** |
+| `SESSION_TIMEOUT_MINUTES` | `30` | Session duration, clamped to 10–480 minutes |
+| `COOKIE_SECURE` | `false` | Set `true` when browsing through HTTPS |
+| `STATUS_INTERVAL` | `60` | Seconds between status checks |
+| `STATUS_TIMEOUT` | `5` | HTTP(S) probe timeout in seconds |
+| `DASHBOARD_BIND_IP` | `0.0.0.0` | Host interface for the Compose port binding |
+| `DASHBOARD_PORT` | `8080` | Host port for the Compose port binding |
+| `TZ` | `Europe/Stockholm` | Container timezone in the provided Compose files |
+
+`DASHBOARD_BIND_IP`, `DASHBOARD_PORT`, and `TZ` are used by the supplied Compose files, not directly by the application. Existing settings in `/data/security.json` take precedence over the initial password and initial session timeout in `.env`.
+
+## Persistent data and first-run behavior
+
+| Host directory | Container directory | Contents |
+| --- | --- | --- |
+| `./site` | `/site` | `config.json`, `status.json`, HTML, JS, CSS and other site assets |
+| `./data` | `/data` | `security.json` and `backups/` |
+
+These are **bind mounts**. Recreating/updating the container does not automatically delete their contents, but **updating the Docker image does not overwrite existing customized site files** either. New frontend fixes in an image may require carefully updating your files in `site/`. Back up files and compare them with the new image's `/sample-site` before replacing anything.
+
+The first start initializes `data/security.json` with a **scrypt password hash** from `DASHBOARD_ADMIN_PASSWORD`. Changing `.env` later **does not change an existing admin password**. Use the Security panel to change it. As a last-resort reset, back up `/data/security.json`, stop the container, remove that file, verify `.env`, and start again. This recreates the file and can reset security-related settings. Do not delete the whole `data/` directory or its backups.
+
+Back up **both** `site/` and `data/` before migrations or major updates. Do not commit `.env` or `data/security.json` to Git.
+
+## Status checks
+
+`start.sh` starts a loop that runs `check-services.sh` periodically. The script reads `/site/config.json` and writes `/site/status.json`. It checks HTTP(S) URLs using `curl` and hosts using `ping`. HTTP(S) checks currently use `curl -k`, so TLS certificate verification is disabled for availability checks; an HTTP error response can also be considered online as long as curl succeeds. These checks measure reachability, not application correctness.
+
+To run a check manually:
+
+```bash
+docker exec dsdashboard /bin/bash /app/check-services.sh
 ```
+
+For source builds, configure `STATUS_INTERVAL` and `STATUS_TIMEOUT` in `.env`, then recreate the container to apply changes.
+
+## HTTPS and reverse proxy
+
+For internet-facing deployments, use a trusted HTTPS reverse proxy, configure access controls as appropriate, and set `COOKIE_SECURE=true` in `.env`. Recreate the container after changing the setting. Do **not** set this flag when accessing the app only via plain HTTP, or login cookies may not work.
+
+If the reverse proxy runs on the same host, consider `DASHBOARD_BIND_IP=127.0.0.1` to avoid exposing port 8080 on all host interfaces. The application currently uses `X-Forwarded-For` for client IP identification; ensure a trusted proxy overwrites that header if you expose it externally. Avoid direct internet exposure without additional protection.
+
+## Updating
+
+**GitHub source build:**
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+**Docker Hub image:**
+
+```bash
+docker compose -f compose.hub.yaml pull
+docker compose -f compose.hub.yaml up -d
+```
+
+Before updating, back up both persistent directories. Check whether files already stored in `site/` need a manual migration; they are not automatically refreshed with the image.
+
+## Useful commands
+
+For source builds, remove `-f compose.hub.yaml` from these examples.
+
+```bash
+# Logs
+docker compose -f compose.hub.yaml logs -f
+
+# Check container and health status
+docker compose -f compose.hub.yaml ps
+
+# Stop/remove container (persistent bind-mount directories remain)
+docker compose -f compose.hub.yaml down
+
+# Manual check
+docker exec dsdashboard /bin/bash /app/check-services.sh
+```
+
+## Adding icons
+
+The frontend's icon picker list is implemented in `/site/app.js`. You can customize it in the persistent `site/app.js` file. Save a backup first; local modifications remain after container updates, so new upstream frontend changes will **not** automatically replace them.
+
+## Troubleshooting
+
+- **Cannot log in after changing `.env`:** the initial password hash remains in `/data/security.json`; use Security settings or follow the careful reset procedure above.
+- **Blank page or missing assets:** check that `/site` contains `index.html`, `app.js`, and `style.css`; examine logs for initialization errors and ensure directory write permissions.
+- **No status information:** check `/site/config.json`, run the manual status check, and inspect `/site/status.json`.
+- **Port 8080 already in use:** change `DASHBOARD_PORT` in `.env` and recreate the Compose service.
+- **Unhealthy container:** inspect `docker logs dsdashboard` and test `docker exec dsdashboard wget -qO- http://127.0.0.1:3000/api/status`.
+
+## License
+
+See [LICENSE](LICENSE) in this repository.

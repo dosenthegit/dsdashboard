@@ -1,0 +1,24 @@
+# Use the image published to Docker Hub. No local source files required.
+services:
+  dsdashboard:
+    image: d0sn/dsdashboard:latest
+    container_name: dsdashboard
+    init: true
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Europe/Stockholm}
+      NODE_ENV: production
+      DASHBOARD_ADMIN_PASSWORD: ${DASHBOARD_ADMIN_PASSWORD:?Set DASHBOARD_ADMIN_PASSWORD in .env}
+    ports:
+      - "${DASHBOARD_BIND_IP:-0.0.0.0}:${DASHBOARD_PORT:-8080}:3000"
+    volumes:
+      - ./site:/site
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/status"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
