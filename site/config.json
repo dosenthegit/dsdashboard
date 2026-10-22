@@ -1,113 +1,25 @@
 {
   "sections": [
     {
-      "id": "infrastructure",
-      "title": "Infrastructure",
+      "id": "examples",
+      "title": "Example Services",
       "icon": "▦",
       "color": "blue",
       "items": [
         {
-          "id": "pve",
-          "name": "Proxmox VE",
-          "description": "Virtual Environment",
-          "url": "https://pve.me",
+          "id": "example-web",
+          "name": "Example Website",
+          "description": "Replace this URL with your own service",
+          "url": "https://example.com",
+          "icon": "🌐",
+          "invertStatus": false
+        },
+        {
+          "id": "example-host",
+          "name": "Example Host",
+          "description": "Replace with your own host or IP address",
+          "url": "192.0.2.10",
           "icon": "🖥️",
-          "invertStatus": false
-        },
-        {
-          "id": "kuma",
-          "name": "Uptime Kuma",
-          "description": "Monitoring",
-          "url": "http://192.168.123.123:3001/dashboard",
-          "icon": "📈",
-          "invertStatus": false
-        }
-      ]
-    },
-    {
-      "id": "network-security",
-      "title": "Network & Security",
-      "icon": "▦",
-      "color": "blue",
-      "items": [
-        {
-          "id": "unifi",
-          "name": "UniFi Network Portal",
-          "description": "Network",
-          "url": "https://network.unifi.com",
-          "icon": "📶",
-          "invertStatus": false
-        },
-        {
-          "id": "vlan200",
-          "name": "CRITICAL VLAN IS BLOCKED",
-          "description": "Critical Monitoring",
-          "url": "10.177.200.30",
-          "icon": "🚨",
-          "invertStatus": true
-        }
-      ]
-    },
-    {
-      "id": "storage",
-      "title": "Storage",
-      "icon": "▦",
-      "color": "blue",
-      "items": [
-        {
-          "id": "dsm",
-          "name": "DSM - Synology DiskStation",
-          "description": "Storage",
-          "url": "https://dsmy.me",
-          "icon": "📦",
-          "invertStatus": false
-        }
-      ]
-    },
-    {
-      "id": "media-office",
-      "title": "Media & Office",
-      "icon": "▦",
-      "color": "blue",
-      "items": [
-        {
-          "id": "printer",
-          "name": "Brother",
-          "description": "Printer",
-          "url": "http://10.177.100.123",
-          "icon": "🖨️",
-          "invertStatus": false
-        },
-        {
-          "id": "jellyfin",
-          "name": "Jellyfin",
-          "description": "Media Server",
-          "url": "https://jellyfin.home",
-          "icon": "🎬",
-          "invertStatus": false
-        }
-      ]
-    },
-    {
-      "id": "bookmarks",
-      "title": "Bookmarks",
-      "icon": "▦",
-      "color": "blue",
-      "items": [
-        {
-          "id": "github",
-          "name": "GIThub",
-          "description": "GIThub",
-          "url": "https://github.com",
-          "icon": "🌍",
-          "invertStatus": false
-        },
-        {
-          "id": "noip",
-          "name": "My No-IP",
-          "description": "Dynamic DNS",
-          "url": "https://noip.com",
-          "icon": "🌍",
           "invertStatus": false
         }
       ]

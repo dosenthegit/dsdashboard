@@ -303,14 +303,14 @@ function ensureStartupFiles() {
 
     if (!fs.existsSync(CONFIG_PATH)) {
         console.log("Initializing site directory with sample configuration...");
-        // Copy over all sample files if the site directory is empty
+        // Initialize missing sample files without overwriting user files.
         if (fs.existsSync(SAMPLE_DIR) && fs.statSync(SAMPLE_DIR).isDirectory()) {
             console.log(`Copying sample files from ${SAMPLE_DIR} to ${SITE_DIR}...`);
             for (const entry of fs.readdirSync(SAMPLE_DIR)) {
                 const src = path.join(SAMPLE_DIR, entry);
                 const dest = path.join(SITE_DIR, entry);
-                if (fs.statSync(src).isFile()) {
-                    fs.copyFileSync(src, dest);
+                if (fs.statSync(src).isFile() && !fs.existsSync(dest)) {
+                    fs.copyFileSync(src, dest, fs.constants.COPYFILE_EXCL);
                     fs.chmodSync(dest, 0o644);
                 }
             }
@@ -323,9 +323,11 @@ function ensureStartupFiles() {
     }
 
     if (!fs.existsSync(SECURITY_PATH)) {
-        const initialPassword = process.env.DASHBOARD_ADMIN_PASSWORD || "change-me-now";
-        if (!process.env.DASHBOARD_ADMIN_PASSWORD) {
-            console.warn("WARNING: DASHBOARD_ADMIN_PASSWORD is not set. Default password is 'change-me-now'. Change it immediately.");
+        const initialPassword = process.env.DASHBOARD_ADMIN_PASSWORD;
+        if (!initialPassword || initialPassword.length < 16 ||
+            initialPassword === "change-me-now" ||
+            initialPassword === "REPLACE_WITH_YOUR_OWN_LONG_RANDOM_PASSWORD") {
+            throw new Error("Set a unique DASHBOARD_ADMIN_PASSWORD (at least 16 characters) before first start.");
         }
         const security = {
             password: hashPassword(initialPassword),
@@ -625,8 +627,8 @@ function cleanExpiredSessions() {
 }
 
 function getClientIp(req) {
-    const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-    return forwarded || req.socket.remoteAddress || "unknown";
+    // Never trust client-supplied X-Forwarded-For headers for login throttling.
+    return req.socket.remoteAddress || "unknown";
 }
 
 function setSecurityHeaders(res) {

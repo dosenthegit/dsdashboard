@@ -4,6 +4,7 @@ set -u
 CONFIG="${CONFIG_PATH:-/site/config.json}"
 OUTPUT="${STATUS_PATH:-/site/status.json}"
 TIMEOUT="${STATUS_TIMEOUT:-5}"
+INSECURE_TLS="${STATUS_INSECURE_TLS:-false}"
 
 mkdir -p "$(dirname "$OUTPUT")"
 TMP="$(mktemp "$(dirname "$OUTPUT")/status.XXXXXX")"
@@ -38,7 +39,11 @@ while IFS= read -r item; do
     STATUS=false
 
     if [[ "$TARGET" =~ ^https?:// ]]; then
-        if curl -k -L -s --max-time "$TIMEOUT" "$TARGET" >/dev/null 2>&1; then
+        CURL_ARGS=(-f -L -sS --max-time "$TIMEOUT" -o /dev/null)
+        if [ "$INSECURE_TLS" = "true" ]; then
+            CURL_ARGS+=(-k)
+        fi
+        if curl "${CURL_ARGS[@]}" "$TARGET" >/dev/null 2>&1; then
             STATUS=true
         fi
     else

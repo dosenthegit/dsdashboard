@@ -40,7 +40,7 @@ cp env.example .env
 nano .env
 ```
 
-Replace `DASHBOARD_ADMIN_PASSWORD` with a strong, unique password **before** starting. Both Compose files refuse to start if the variable is missing or empty. Then run:
+Replace `DASHBOARD_ADMIN_PASSWORD` with a strong, unique password **before** starting. Both Compose files refuse to start if the variable is missing or empty, and first-run initialization rejects passwords shorter than 16 characters or known placeholders. Then run:
 
 ```bash
 mkdir -p site data
@@ -70,7 +70,7 @@ docker compose -f compose.hub.yaml ps
 
 Replace `DASHBOARD_ADMIN_PASSWORD` with a strong, unique password before the first start. Open `http://SERVER-IP:8080`.
 
-On first start, the app **copies bundled example files from `/sample-site` into `/site` when `/site/config.json` is missing**. You normally do not need to copy the repository's `site/` contents manually when using a matching, current Docker Hub image. **Caution:** when `config.json` is missing, this initialization can overwrite other files in `/site` that share the example filenames. Always back up `site/` before deleting `config.json`.
+On first start, the app **copies missing bundled example files from `/sample-site` into `/site` when `/site/config.json` is missing**. You normally do not need to copy the repository's `site/` contents manually when using a matching, current Docker Hub image. Existing files in `/site` are not overwritten by first-run initialization. Back up `site/` before deleting `config.json`.
 
 The Docker Hub image is independently published. If its behavior differs from the GitHub source, verify the image version and its bundled files.
 
@@ -91,7 +91,7 @@ docker run -d \
   d0sn/dsdashboard:latest
 ```
 
-> Docker `run` does not apply the Compose file's required-password validation; make sure `.env` has a strong password before starting. A placeholder password is not automatically rejected by Compose either.
+> Docker `run` does not apply the Compose file's required-password validation; make sure `.env` has a strong password before starting. First-run initialization also rejects placeholder passwords and requires at least 16 characters.
 
 ## Configuration variables
 
@@ -99,11 +99,12 @@ Copy `env.example` to `.env`. The settings below can be changed:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DASHBOARD_ADMIN_PASSWORD` | Required by Compose | First-run admin password. Compose refuses to start if it is missing or empty. Replace the template value with a strong password. |
+| `DASHBOARD_ADMIN_PASSWORD` | Required by Compose | First-run admin password. Compose refuses to start if it is missing or empty. Replace the template value with a unique password of at least 16 characters; placeholder values are rejected on first start. |
 | `SESSION_TIMEOUT_MINUTES` | `30` | Session duration, clamped to 10–480 minutes |
 | `COOKIE_SECURE` | `false` | Set `true` when browsing through HTTPS |
 | `STATUS_INTERVAL` | `60` | Seconds between status checks |
 | `STATUS_TIMEOUT` | `5` | HTTP(S) probe timeout in seconds |
+| `STATUS_INSECURE_TLS` | `false` | Disable TLS certificate verification for status checks only when explicitly set to `true` |
 | `DASHBOARD_BIND_IP` | `0.0.0.0` | Host interface for the Compose port binding |
 | `DASHBOARD_PORT` | `8080` | Host port for the Compose port binding |
 | `TZ` | `Europe/Stockholm` | Container timezone in the provided Compose files |
@@ -119,13 +120,13 @@ Copy `env.example` to `.env`. The settings below can be changed:
 
 These are **bind mounts**. Recreating/updating the container does not automatically delete their contents, but **updating the Docker image does not overwrite existing customized site files** either. New frontend fixes in an image may require carefully updating your files in `site/`. Back up files and compare them with the new image's `/sample-site` before replacing anything.
 
-The first start initializes `data/security.json` with a **scrypt password hash** from `DASHBOARD_ADMIN_PASSWORD`. Changing `.env` later **does not change an existing admin password**. Use the Security panel to change it. As a last-resort reset, back up `/data/security.json`, stop the container, remove that file, verify `.env`, and start again. This recreates the file and can reset security-related settings. Do not delete the whole `data/` directory or its backups.
+The first start requires `DASHBOARD_ADMIN_PASSWORD` to be at least 16 characters and not a known placeholder, then initializes `data/security.json` with a **scrypt password hash** from `DASHBOARD_ADMIN_PASSWORD`. Changing `.env` later **does not change an existing admin password**. Use the Security panel to change it. As a last-resort reset, back up `/data/security.json`, stop the container, remove that file, verify `.env`, and start again. This recreates the file and can reset security-related settings. Do not delete the whole `data/` directory or its backups.
 
 Back up **both** `site/` and `data/` before migrations or major updates. Do not commit `.env` or `data/security.json` to Git.
 
 ## Status checks
 
-`start.sh` starts a loop that runs `check-services.sh` periodically. The script reads `/site/config.json` and writes `/site/status.json`. It checks HTTP(S) URLs using `curl` and hosts using `ping`. HTTP(S) checks currently use `curl -k`, so TLS certificate verification is disabled for availability checks; an HTTP error response can also be considered online as long as curl succeeds. These checks measure reachability, not application correctness.
+`start.sh` starts a loop that runs `check-services.sh` periodically. The script reads `/site/config.json` and writes `/site/status.json`. It checks HTTP(S) URLs using `curl` and hosts using `ping`. HTTP(S) checks validate TLS certificates by default and treat HTTP 4xx/5xx as offline. Set `STATUS_INSECURE_TLS=true` only for endpoints whose certificates cannot be validated. Redirects are followed. These checks indicate HTTP availability, not full application correctness.
 
 To run a check manually:
 
@@ -139,7 +140,7 @@ For source builds, configure `STATUS_INTERVAL` and `STATUS_TIMEOUT` in `.env`, t
 
 For internet-facing deployments, use a trusted HTTPS reverse proxy, configure access controls as appropriate, and set `COOKIE_SECURE=true` in `.env`. Recreate the container after changing the setting. Do **not** set this flag when accessing the app only via plain HTTP, or login cookies may not work.
 
-If the reverse proxy runs on the same host, consider `DASHBOARD_BIND_IP=127.0.0.1` to avoid exposing port 8080 on all host interfaces. The application currently uses `X-Forwarded-For` for client IP identification; ensure a trusted proxy overwrites that header if you expose it externally. Avoid direct internet exposure without additional protection.
+If the reverse proxy runs on the same host, consider `DASHBOARD_BIND_IP=127.0.0.1` to avoid exposing port 8080 on all host interfaces. For login throttling the application uses the direct TCP peer address rather than trusting user-supplied `X-Forwarded-For` headers. When behind a reverse proxy, multiple users can share one rate-limit bucket; apply additional per-client rate limiting at your trusted reverse proxy. Avoid direct internet exposure without additional protection.
 
 ## Updating
 
@@ -214,3 +215,9 @@ docker buildx imagetools inspect d0sn/dsdashboard:latest
 ```
 
 Never commit the access token or `.env` file.
+
+## Public sample configuration and security
+
+The tracked `site/config.json` contains **example-only addresses** (`example.com`, `192.0.2.10`). Replace these through the dashboard after installation. Do not commit private hostnames, internal addresses, credentials, or your modified runtime config. If you clone the source, the local `site/config.json` remains a *tracked sample file*; do not commit your local changes to it. For production, prefer a separate deployment directory and the `compose.hub.yaml` image. `.gitignore` cannot hide changes to a tracked file.
+
+Before publishing a public repository, inspect commit history and past Docker image layers separately: replacing a file in the latest commit does not erase historical copies. Rotate any credentials that may have been exposed.
