@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.env.*
+!env.example
+node_modules
+site/config.json
+site/*.db
+data
+*.log
+*.bak
+*.zip
+.DS_Store
