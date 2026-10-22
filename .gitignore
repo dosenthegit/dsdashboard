@@ -1,0 +1,23 @@
+# Environment and secrets
+.env
+.env.*
+!env.example
+
+# Runtime data
+data/
+site/config.json
+site/*.db
+
+# Backups and logs
+*.bak
+*.log
+*.zip
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node.js
+node_modules/
