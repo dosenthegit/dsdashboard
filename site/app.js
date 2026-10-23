@@ -75,9 +75,6 @@
         elements.editorToolbar = document.getElementById("editorToolbar");
         elements.editModeNotice = document.getElementById("editModeNotice");
         elements.editModeButton = document.getElementById("editModeButton");
-        elements.toolbarImportButton = document.getElementById("toolbarImportButton");
-        elements.toolbarExportButton = document.getElementById("toolbarExportButton");
-        elements.toolbarViewSiteButton = document.getElementById("toolbarViewSiteButton");
         elements.toolbarExitButton = document.getElementById("toolbarExitButton");
         elements.servicesCount = document.getElementById("servicesCount");
         elements.onlineCount = document.getElementById("onlineCount");
@@ -88,15 +85,11 @@
         elements.modal = document.getElementById("modal");
         elements.toastContainer = document.getElementById("toastContainer");
         elements.importFileInput = document.getElementById("importFileInput");
-        elements.restoreFileInput = document.getElementById("restoreFileInput");
     }
 
     function bindGlobalEvents() {
         elements.editModeButton.addEventListener("click", handleEditModeButton);
         elements.toolbarExitButton.addEventListener("click", exitEditMode);
-        elements.toolbarViewSiteButton.addEventListener("click", exitEditMode);
-        elements.toolbarImportButton.addEventListener("click", () => elements.importFileInput.click());
-        elements.toolbarExportButton.addEventListener("click", exportConfig);
 
         elements.modalOverlay.addEventListener("click", (event) => {
             if (event.target === elements.modalOverlay) {
@@ -114,23 +107,11 @@
             const file = event.target.files?.[0];
             event.target.value = "";
             if (file) {
-                await importConfigFile(file, "Configuration imported");
+                confirmImportConfig(file);
             }
         });
 
-        elements.restoreFileInput.addEventListener("change", async (event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            if (file) {
-                openConfirmModal({
-                    title: "Restore Configuration",
-                    message: "This will replace the current configuration. A backup will be created first.",
-                    confirmText: "Restore",
-                    danger: true,
-                    onConfirm: async () => importConfigFile(file, "Configuration restored from file")
-                });
-            }
-        });
+
     }
 
     async function apiFetch(path, options = {}) {
@@ -474,7 +455,6 @@
         elements.editSidebar.innerHTML = "";
         elements.editSidebar.appendChild(createAddHostPanel());
         elements.editSidebar.appendChild(createQuickSectionPanel());
-        elements.editSidebar.appendChild(createNewSectionPanel());
     }
 
     function createAddHostPanel() {
@@ -567,85 +547,47 @@
         return panel;
     }
 
-    function createNewSectionPanel() {
-        const panel = createPanel("Add New Section (Block)");
-        const form = document.createElement("form");
-        form.noValidate = true;
-        form.appendChild(createInputField("Title", "sideNewSectionTitle", "e.g. Kubernetes"));
-        form.appendChild(createSelectField("Icon", "sideNewSectionIcon", SECTION_ICONS.map((icon) => ({ value: icon, label: icon })), "▦"));
-        form.appendChild(createColorPicker("sideNewSectionColor", "purple"));
-        form.appendChild(createButton("+ Add Section", "button button-primary full-width", null, "submit"));
-        form.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            const title = form.querySelector("#sideNewSectionTitle").value.trim();
-            if (!title) return notify("warning", "Missing title", "Section title is required.");
-            await createSection({
-                title,
-                icon: form.querySelector("#sideNewSectionIcon").value,
-                color: form.querySelector("input[name='sideNewSectionColor']:checked")?.value || "purple"
-            });
-            form.reset();
-        });
-        panel.appendChild(form);
-        return panel;
-    }
-
     function renderEditPanels() {
         elements.editPanels.innerHTML = "";
-        elements.editPanels.appendChild(createImportPanel());
-        elements.editPanels.appendChild(createExportPanel());
-        elements.editPanels.appendChild(createBackupPanel());
-        elements.editPanels.appendChild(createRestorePanel());
+        elements.editPanels.appendChild(createConfigurationPanel());
         elements.editPanels.appendChild(createFunctionsPanel());
         elements.editPanels.appendChild(createNotificationsPanel());
         elements.editPanels.appendChild(createMobilePreviewPanel());
         elements.editPanels.appendChild(createSecurityPanel());
     }
 
-    function createImportPanel() {
-        const panel = createPanel("Import Configuration", "panel-medium");
-        const text = document.createElement("p");
-        text.textContent = "Upload a config.json file to import.";
-        panel.appendChild(text);
-        const zone = createUploadZone("Drag & drop or click to select file", async (file) => importConfigFile(file, "Configuration imported"));
-        panel.appendChild(zone);
-        panel.appendChild(createButton("Import", "button button-primary full-width", () => elements.importFileInput.click()));
+    function createConfigurationPanel() {
+        const panel = createPanel("Configuration & Backups", "panel-full");
+        const description = document.createElement("p");
+        description.textContent = "Import or download config.json, or manage your backups in one place. Import replaces the current configuration after confirmation.";
+        panel.appendChild(description);
+        const actions = document.createElement("div");
+        actions.className = "configuration-actions";
+        actions.appendChild(createButton("↥ Import config.json", "button button-secondary", () => elements.importFileInput.click()));
+        actions.appendChild(createButton("↧ Export config.json", "button button-secondary", exportConfig));
+        actions.appendChild(createButton("▣ Manage Backups", "button button-primary", openBackupsModal));
+        panel.appendChild(actions);
+        const status = document.createElement("p");
+        status.className = "configuration-backup-status";
+        status.textContent = state.backups.length
+            ? `Automatic backup enabled · Latest: ${formatBackupTime(state.backups[0].createdAt)}`
+            : "Automatic backup enabled · No backups yet";
+        panel.appendChild(status);
         return panel;
     }
 
-    function createExportPanel() {
-        const panel = createPanel("Export Configuration", "panel-medium");
-        const text = document.createElement("p");
-        text.textContent = "Download your current configuration or create a manual backup.";
-        panel.appendChild(text);
-        panel.appendChild(createButton("↧ Download config.json", "button button-secondary full-width", exportConfig));
-        panel.appendChild(spacer(10));
-        panel.appendChild(createButton("▣ Create Backup", "button button-secondary full-width", createBackup));
-        return panel;
-    }
-
-    function createBackupPanel() {
-        const panel = createPanel("Backup (Auto)", "panel-medium");
-        const info = document.createElement("p");
-        info.textContent = "Automatic backup is enabled. Every server-side save creates a backup first.";
-        panel.appendChild(info);
-        const last = document.createElement("p");
-        last.className = "green";
-        last.textContent = state.backups.length ? `Last backup: ${formatBackupTime(state.backups[0].createdAt)}` : "No backups yet.";
-        panel.appendChild(last);
-        panel.appendChild(createButton("View Backups", "button button-secondary full-width", openBackupsModal));
-        return panel;
-    }
-
-    function createRestorePanel() {
-        const panel = createPanel("Restore Configuration", "panel-medium");
-        const info = document.createElement("p");
-        info.textContent = "Restore from a backup or from a local config file.";
-        panel.appendChild(info);
-        panel.appendChild(createButton("↧ Select Backup", "button button-secondary full-width", openBackupsModal));
-        panel.appendChild(spacer(10));
-        panel.appendChild(createButton("Restore From File", "button button-danger full-width", () => elements.restoreFileInput.click()));
-        return panel;
+    function confirmImportConfig(file) {
+        if (!file.name.toLowerCase().endsWith(".json")) {
+            notify("error", "Invalid file", "Select a JSON configuration file.");
+            return;
+        }
+        openConfirmModal({
+            title: "Import Configuration",
+            message: "Replace the current configuration with this file? The current configuration will be backed up automatically before saving.",
+            confirmText: "Import & Replace",
+            danger: true,
+            onConfirm: async () => importConfigFile(file, "Configuration imported")
+        });
     }
 
     function createFunctionsPanel() {
@@ -805,26 +747,6 @@
         element.className = `toast ${entry.type || "info"}`;
         element.innerHTML = `<div><strong>${escapeHtml(entry.title)}</strong><p>${escapeHtml(entry.message)}</p></div>`;
         return element;
-    }
-
-    function createUploadZone(label, onFile) {
-        const zone = document.createElement("button");
-        zone.type = "button";
-        zone.className = "upload-zone";
-        zone.textContent = label;
-        zone.addEventListener("click", () => elements.importFileInput.click());
-        zone.addEventListener("dragover", (event) => {
-            event.preventDefault();
-            zone.classList.add("drag-active");
-        });
-        zone.addEventListener("dragleave", () => zone.classList.remove("drag-active"));
-        zone.addEventListener("drop", async (event) => {
-            event.preventDefault();
-            zone.classList.remove("drag-active");
-            const file = event.dataTransfer.files?.[0];
-            if (file) await onFile(file);
-        });
-        return zone;
     }
 
     function createPanel(title, extraClass = "") {

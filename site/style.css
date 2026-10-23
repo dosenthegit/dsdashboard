@@ -1119,3 +1119,8 @@ textarea {
         display: none;
     }
 }
+
+/* Consolidated configuration tools */
+.configuration-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.configuration-actions .button { flex: 1 1 180px; }
+.configuration-backup-status { margin: 12px 0 0; font-size: 12px; color: var(--muted-strong); }

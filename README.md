@@ -6,6 +6,12 @@
 
 A simple dashboard/homepage with HTTP(S) and ping status checks, a password-protected edit mode, configurable sections and cards, import/export, and configuration backups.
 
+## Edit mode: configuration and backups
+
+The **Configuration & Backups** panel is the single location for importing and exporting `config.json` and opening backup management. **Import config.json** asks for confirmation before replacing the existing configuration; a server-side backup is created before the save. **Export config.json** downloads the active configuration. **Manage Backups** opens a dialog for creating, downloading, restoring and deleting stored backups. Automatic backups continue to run before server-side saves. The separate restore-from-file option was consolidated into import because both performed the same operation.
+
+**Add New Section** opens the section editor; the duplicate sidebar form was removed. The edit toolbar now has a single **Exit Edit Mode** action.
+
 ## Features
 
 - Dashboard with search, stats, service sections, cards, and dark/light themes
