@@ -15,9 +15,10 @@ WORKDIR /app
 COPY server.js package.json start.sh check-services.sh ./
 
 RUN chmod +x /app/start.sh /app/check-services.sh \
-    && mkdir -p /site /data/backups /sample-site
+    && mkdir -p /site /data/backups /app/public /app/defaults
 
-COPY site/ /sample-site/
+COPY site/index.html site/app.js site/style.css /app/public/
+COPY site/config.json /app/defaults/config.json
 
 EXPOSE 3000
 

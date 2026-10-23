@@ -44,3 +44,17 @@ git push origin v1.0.0
 ```
 
 Note: The image's actual runtime, first-start volume initialization and healthcheck have not been run in this environment. The workflow must be executed in GitHub Actions to confirm registry publishing credentials and permissions.
+
+## Frontend rollout and persisted data
+
+New images serve the UI from `/app/public` while the bind mount `/site` holds only runtime configuration and status. The image initializes missing `/site/config.json` from `/app/defaults/config.json`. Existing site configs and `/data` backups/security persist across image updates; legacy `/site/app.js`, `/site/index.html` and `/site/style.css` are ignored. Do not remove existing mounts or delete their contents during upgrade.
+
+After the publishing workflow succeeds, deploy with:
+
+```sh
+docker compose -f compose.hub.yaml pull
+docker compose -f compose.hub.yaml up -d --force-recreate
+docker exec dsdashboard grep -n "Configuration & Backups" /app/public/app.js
+```
+
+Hard-refresh the browser if cached JS/CSS persists. A local ZIP or Git commit does **not** update Docker Hub until the image publishing workflow succeeds. For source installations, run `docker compose up -d --build --force-recreate` instead.

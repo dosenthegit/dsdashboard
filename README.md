@@ -24,7 +24,7 @@ The **Configuration & Backups** panel is the single location for importing and e
 
 - Docker Engine and Docker Compose plugin (`docker compose`), OR Docker Engine for the `docker run` alternative
 - Available TCP port 8080 on the host (configurable)
-- Writable persistent `site/` and `data/` directories
+- Writable persistent `site/` (runtime config/status) and `data/` (security/backups) directories
 
 ## Choose an installation method
 
@@ -76,7 +76,7 @@ docker compose -f compose.hub.yaml ps
 
 Replace `DASHBOARD_ADMIN_PASSWORD` with a strong, unique password before the first start. Open `http://SERVER-IP:8080`.
 
-On first start, the app **copies missing bundled example files from `/sample-site` into `/site` when `/site/config.json` is missing**. You normally do not need to copy the repository's `site/` contents manually when using a matching, current Docker Hub image. Existing files in `/site` are not overwritten by first-run initialization. Back up `site/` before deleting `config.json`.
+On first start the app creates `/site/config.json` from the image's `/app/defaults/config.json` **only if it does not exist**, and initializes `/site/status.json` if necessary. HTML, CSS and JavaScript are always served from **`/app/public` in the image**, never from the mounted `/site` directory. Existing configuration and backups are preserved. Back up `site/` before deleting `config.json`.
 
 The Docker Hub image is independently published. If its behavior differs from the GitHub source, verify the image version and its bundled files.
 
@@ -121,10 +121,10 @@ Copy `env.example` to `.env`. The settings below can be changed:
 
 | Host directory | Container directory | Contents |
 | --- | --- | --- |
-| `./site` | `/site` | `config.json`, `status.json`, HTML, JS, CSS and other site assets |
+| `./site` | `/site` | Persistent `config.json` and generated `status.json`; legacy frontend files, if present, are ignored |
 | `./data` | `/data` | `security.json` and `backups/` |
 
-These are **bind mounts**. Recreating/updating the container does not automatically delete their contents, but **updating the Docker image does not overwrite existing customized site files** either. New frontend fixes in an image may require carefully updating your files in `site/`. Back up files and compare them with the new image's `/sample-site` before replacing anything.
+These are **bind mounts**. Container recreation preserves the contents. The image bundles the frontend in `/app/public` and always serves it from there, so `docker compose pull && docker compose up -d` updates the interface when a newly published image is available. Existing `./site/app.js`, `./site/index.html` and `./site/style.css` from older deployments are **ignored** (not deleted). The image initializes missing config using `/app/defaults/config.json` without overwriting an existing config. Keep backups of both bind mounts.
 
 The first start requires `DASHBOARD_ADMIN_PASSWORD` to be at least 16 characters and not a known placeholder, then initializes `data/security.json` with a **scrypt password hash** from `DASHBOARD_ADMIN_PASSWORD`. Changing `.env` later **does not change an existing admin password**. Use the Security panel to change it. As a last-resort reset, back up `/data/security.json`, stop the container, remove that file, verify `.env`, and start again. This recreates the file and can reset security-related settings. Do not delete the whole `data/` directory or its backups.
 
@@ -164,7 +164,7 @@ docker compose -f compose.hub.yaml pull
 docker compose -f compose.hub.yaml up -d
 ```
 
-Before updating, back up both persistent directories. Check whether files already stored in `site/` need a manual migration; they are not automatically refreshed with the image.
+Before updating, back up both persistent directories. Frontend assets are updated automatically when the **new image is actually published and pulled**. No manual copy of HTML, CSS or JavaScript to `site/` is required. If the interface still looks old, check that the image was rebuilt and published, recreate the container and hard-refresh your browser (Ctrl+Shift+R).
 
 ## Useful commands
 
@@ -186,12 +186,13 @@ docker exec dsdashboard /bin/bash /app/check-services.sh
 
 ## Adding icons
 
-The frontend's icon picker list is implemented in `/site/app.js`. You can customize it in the persistent `site/app.js` file. Save a backup first; local modifications remain after container updates, so new upstream frontend changes will **not** automatically replace them.
+The frontend's icon picker list is implemented in `site/app.js` **in the source repository**, built into `/app/public/app.js` in the image. To customize it, edit the source, rebuild and redeploy the image; editing `/site/app.js` inside a volume no longer changes the live interface. Preserve customizations in source control.
 
 ## Troubleshooting
 
 - **Cannot log in after changing `.env`:** the initial password hash remains in `/data/security.json`; use Security settings or follow the careful reset procedure above.
-- **Blank page or missing assets:** check that `/site` contains `index.html`, `app.js`, and `style.css`; examine logs for initialization errors and ensure directory write permissions.
+- **Blank page or missing assets:** check `/app/public/index.html`, `/app/public/app.js` and `/app/public/style.css` in the image and inspect container logs. Old files in `/site` are not served.
+- **Old Edit Mode after update:** ensure the updated source was pushed and the Docker Hub image rebuilt; run `docker compose -f compose.hub.yaml pull && docker compose -f compose.hub.yaml up -d --force-recreate`, then hard-refresh. Check `docker exec dsdashboard grep -n "Configuration & Backups" /app/public/app.js`. An image built before this change will still behave as before.
 - **No status information:** check `/site/config.json`, run the manual status check, and inspect `/site/status.json`.
 - **Port 8080 already in use:** change `DASHBOARD_PORT` in `.env` and recreate the Compose service.
 - **Unhealthy container:** inspect `docker logs dsdashboard` and test `docker exec dsdashboard wget -qO- http://127.0.0.1:3000/api/status`.
@@ -227,3 +228,13 @@ Never commit the access token or `.env` file.
 The tracked `site/config.json` contains **example-only addresses** (`example.com`, `192.0.2.10`). Replace these through the dashboard after installation. Do not commit private hostnames, internal addresses, credentials, or your modified runtime config. If you clone the source, the local `site/config.json` remains a *tracked sample file*; do not commit your local changes to it. For production, prefer a separate deployment directory and the `compose.hub.yaml` image. `.gitignore` cannot hide changes to a tracked file.
 
 Before publishing a public repository, inspect commit history and past Docker image layers separately: replacing a file in the latest commit does not erase historical copies. Rotate any credentials that may have been exposed.
+
+## Migrating from an older image
+
+1. Back up the existing `site/` and `data/` directories (including the `.env` file separately). Do not delete `config.json` or `data/security.json`.
+2. Publish/build an image containing this change, then pull/rebuild and recreate the container using the commands under **Updating**.
+3. Keep the existing volume mounts; the previous `site/index.html`, `site/app.js`, and `site/style.css` are harmless but unused. Remove them only after verifying the new image and saving a backup.
+4. Verify the effective frontend with `docker exec dsdashboard grep -n "Configuration & Backups" /app/public/app.js`. The static content is bundled into the image; the running frontend is no longer read from `/site`.
+5. Hard-refresh the browser. The Docker Hub `latest` tag will not incorporate these changes until a new image is pushed successfully by the maintainer.
+
+**Security note:** `/site/config.json` is now only read through the config API rather than being a directly served static JSON file. The dashboard configuration API itself remains publicly readable to display the dashboard, so do not store credentials or secrets in config fields.

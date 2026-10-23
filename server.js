@@ -8,7 +8,8 @@ const crypto = require("crypto");
 const PORT = Number(process.env.PORT || 3000);
 const SITE_DIR = process.env.SITE_DIR || "/site";
 const DATA_DIR = process.env.DATA_DIR || "/data";
-const SAMPLE_DIR = "/sample-site";
+const SAMPLE_DIR = path.join(__dirname, "defaults");
+const PUBLIC_DIR = path.join(__dirname, "public");
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(SITE_DIR, "config.json");
 const STATUS_PATH = process.env.STATUS_PATH || path.join(SITE_DIR, "status.json");
 const BACKUP_DIR = process.env.BACKUP_DIR || path.join(DATA_DIR, "backups");
@@ -264,8 +265,8 @@ async function serveStatic(req, res, pathname) {
         return;
     }
 
-    const filePath = path.normalize(path.join(SITE_DIR, requested));
-    const relative = path.relative(SITE_DIR, filePath);
+    const filePath = path.normalize(path.join(PUBLIC_DIR, requested));
+    const relative = path.relative(PUBLIC_DIR, filePath);
 
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
         sendJson(res, 403, { error: "Forbidden" });
@@ -302,17 +303,13 @@ function ensureStartupFiles() {
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
     if (!fs.existsSync(CONFIG_PATH)) {
-        console.log("Initializing site directory with sample configuration...");
-        // Initialize missing sample files without overwriting user files.
+        console.log("Initializing missing runtime configuration...");
+        // Initialize only runtime configuration; web assets are served from PUBLIC_DIR.
         if (fs.existsSync(SAMPLE_DIR) && fs.statSync(SAMPLE_DIR).isDirectory()) {
-            console.log(`Copying sample files from ${SAMPLE_DIR} to ${SITE_DIR}...`);
-            for (const entry of fs.readdirSync(SAMPLE_DIR)) {
-                const src = path.join(SAMPLE_DIR, entry);
-                const dest = path.join(SITE_DIR, entry);
-                if (fs.statSync(src).isFile() && !fs.existsSync(dest)) {
-                    fs.copyFileSync(src, dest, fs.constants.COPYFILE_EXCL);
-                    fs.chmodSync(dest, 0o644);
-                }
+            const src = path.join(SAMPLE_DIR, "config.json");
+            if (fs.existsSync(src)) {
+                fs.copyFileSync(src, CONFIG_PATH, fs.constants.COPYFILE_EXCL);
+                fs.chmodSync(CONFIG_PATH, 0o644);
             }
         }
     }
