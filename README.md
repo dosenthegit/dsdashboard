@@ -238,3 +238,7 @@ Before publishing a public repository, inspect commit history and past Docker im
 5. Hard-refresh the browser. The Docker Hub `latest` tag will not incorporate these changes until a new image is pushed successfully by the maintainer.
 
 **Security note:** `/site/config.json` is now only read through the config API rather than being a directly served static JSON file. The dashboard configuration API itself remains publicly readable to display the dashboard, so do not store credentials or secrets in config fields.
+
+### Docker build context and default configuration
+
+The bundled example configuration is maintained in `defaults/config.json` and copied into the image at `/app/defaults/config.json`. The runtime sample at `site/config.json` is excluded by `.dockerignore` to prevent accidentally packaging local host configuration. Keep `defaults/config.json` generic and free of internal addresses or credentials. Do not remove the `defaults/` directory when publishing the source.

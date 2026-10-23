@@ -58,3 +58,5 @@ docker exec dsdashboard grep -n "Configuration & Backups" /app/public/app.js
 ```
 
 Hard-refresh the browser if cached JS/CSS persists. A local ZIP or Git commit does **not** update Docker Hub until the image publishing workflow succeeds. For source installations, run `docker compose up -d --build --force-recreate` instead.
+
+The Docker image copies `defaults/config.json` (tracked example configuration), not `site/config.json`. The latter is deliberately excluded by `.dockerignore` to avoid publishing local runtime settings.

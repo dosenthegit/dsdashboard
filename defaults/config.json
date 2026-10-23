@@ -1,0 +1,28 @@
+{
+  "sections": [
+    {
+      "id": "examples",
+      "title": "Example Services",
+      "icon": "▦",
+      "color": "blue",
+      "items": [
+        {
+          "id": "example-web",
+          "name": "Example Website",
+          "description": "Replace this URL with your own service",
+          "url": "https://example.com",
+          "icon": "🌐",
+          "invertStatus": false
+        },
+        {
+          "id": "example-host",
+          "name": "Example Host",
+          "description": "Replace with your own host or IP address",
+          "url": "192.0.2.10",
+          "icon": "🖥️",
+          "invertStatus": false
+        }
+      ]
+    }
+  ]
+}
