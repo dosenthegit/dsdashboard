@@ -1,4 +1,5 @@
-FROM node:lts-alpine
+# Pin Node.js to a supported major version; rebuild regularly for security fixes.
+FROM node:24-alpine
 
 RUN apk add --no-cache \
     bash \
@@ -11,15 +12,10 @@ ENV TZ=Europe/Stockholm
 ENV NODE_ENV=production
 
 WORKDIR /app
-
 COPY server.js package.json start.sh check-services.sh ./
-
 RUN chmod +x /app/start.sh /app/check-services.sh \
     && mkdir -p /site /data/backups /app/public /app/defaults
-
 COPY site/index.html site/app.js site/style.css /app/public/
 COPY defaults/config.json /app/defaults/config.json
-
 EXPOSE 3000
-
 CMD ["/app/start.sh"]
