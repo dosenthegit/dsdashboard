@@ -39,7 +39,7 @@ while IFS= read -r item; do
     STATUS=false
 
     if [[ "$TARGET" =~ ^https?:// ]]; then
-        CURL_ARGS=(-f -L -sS --max-time "$TIMEOUT" -o /dev/null)
+        CURL_ARGS=(-L -sS --max-time "$TIMEOUT" -o /dev/null)
         if [ "$INSECURE_TLS" = "true" ]; then
             CURL_ARGS+=(-k)
         fi
