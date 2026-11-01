@@ -12,7 +12,8 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '0 3 * * 0'
+  - cron: '17 3 * * 0'
+    timezone: 'Europe/Stockholm'
 
 permissions:
   contents: read
