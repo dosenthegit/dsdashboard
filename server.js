@@ -286,7 +286,7 @@ async function serveStatic(req, res, pathname) {
 
     res.writeHead(200, {
         "Content-Type": MIME_TYPES.get(ext),
-        "Cache-Control": ext === ".html" ? "no-store" : "public, max-age=300"
+        "Cache-Control": [".html", ".js", ".css"].includes(ext) ? "no-store" : "public, max-age=300"
     });
 
     if (req.method === "HEAD") {

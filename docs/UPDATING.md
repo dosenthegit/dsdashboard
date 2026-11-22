@@ -1,7 +1,7 @@
 # DSDashboard build and update guide
 
 - GitHub `main` builds: cached build, pushes Docker Hub and GHCR.
-- Sunday 03:00 UTC: `no-cache` and `pull`, builds and publishes `linux/amd64` plus `linux/arm64`.
+- Sunday 05:35 Europe/Stockholm: `no-cache` and `pull`, builds and publishes `linux/amd64` plus `linux/arm64`.
 - Manual GitHub Actions builds: optional `full_rebuild` input.
 - Git version tags publish semantic version tags. `latest` follows `main` only.
 - Existing Docker installations are not updated until manually redeployed.

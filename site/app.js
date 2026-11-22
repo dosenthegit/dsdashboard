@@ -22,24 +22,7 @@
   "🆘"
 ];
 
-    const SECTION_ICONS = [
-  "🖥️", "💻", "🖨️", "🖱️", "⌨️", "💾", "💿", "📀", "🧮", "🔌",
-  "🔋", "🪫", "⚡", "🧰", "🔧", "🪛", "⚙️", "🛠️", "🧲", "🌡️",
-  "🌀", "📟", "🧱", "📦", "🗃️", "🏗️", "🧩", "🔄", "🔀", "☁️",
-  "🏢", "🚀", "🐳", "🐙", "☸️", "⚓", "🚢", "🧊", "🗂️", "🔁",
-  "🐧", "🌐", "🛜", "📡", "📶", "🔗", "🛰️", "🗼", "🌍", "🌎",
-  "🌏", "🕸️", "↔️", "↕️", "📲", "🛡️", "💽", "🗄️", "📁", "📂",
-  "🪣", "🏦", "🗜️", "⏪", "⏮️", "🛟", "🔐", "🕒", "📅", "✅",
-  "📤", "📥", "📊", "📈", "📉", "📋", "📑", "📜", "🔍", "🔎",
-  "👁️", "🩺", "❤️", "💚", "💛", "🚨", "🔔", "🔕", "⚠️", "🚦",
-  "⏱️", "🔒", "🔓", "🔑", "🗝️", "🚫", "⛔", "🕵️", "👮", "🪪",
-  "❌", "🔏", "🪟", "🍎", "🤖", "🐚", "🌤️", "⛅", "🌩️", "⏰",
-  "🧪", "🧬", "🐍", "📚", "📖", "📹", "🎥", "📷", "📸", "📺",
-  "🎞️", "🎬", "🔴", "💡", "🎵", "🎶", "🎧", "🔊", "🔉", "🔇",
-  "▶️", "⏯️", "⏸️", "⏹️", "🍿", "🟢", "🟡", "🟠", "🔵", "🟣",
-  "⚪", "⚫", "🟤", "☑️", "✔️", "❎", "❗", "❓", "ℹ️", "🆗",
-  "🆘"
-];
+    const SECTION_ICONS = ["▦", "⭐", ...ICONS];
     const SECTION_COLORS = ["blue", "green", "purple", "pink", "orange", "red", "slate", "cyan"];
     const COLOR_VALUES = {
         blue: "#3b82f6",
@@ -106,9 +89,6 @@
         elements.editorToolbar = document.getElementById("editorToolbar");
         elements.editModeNotice = document.getElementById("editModeNotice");
         elements.editModeButton = document.getElementById("editModeButton");
-        elements.toolbarImportButton = document.getElementById("toolbarImportButton");
-        elements.toolbarExportButton = document.getElementById("toolbarExportButton");
-        elements.toolbarViewSiteButton = document.getElementById("toolbarViewSiteButton");
         elements.toolbarExitButton = document.getElementById("toolbarExitButton");
         elements.servicesCount = document.getElementById("servicesCount");
         elements.onlineCount = document.getElementById("onlineCount");
@@ -125,9 +105,6 @@
     function bindGlobalEvents() {
         elements.editModeButton.addEventListener("click", handleEditModeButton);
         elements.toolbarExitButton.addEventListener("click", exitEditMode);
-        elements.toolbarViewSiteButton.addEventListener("click", exitEditMode);
-        elements.toolbarImportButton.addEventListener("click", () => elements.importFileInput.click());
-        elements.toolbarExportButton.addEventListener("click", exportConfig);
 
         elements.modalOverlay.addEventListener("click", (event) => {
             if (event.target === elements.modalOverlay) {

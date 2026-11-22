@@ -5,7 +5,7 @@
   "description": "Production dashboard with password-protected edit mode, backups, import/export and drag/drop editing.",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check site/app.js"
+    "check": "node --check server.js && node --check site/app.js && node scripts/check-frontend.js"
   },
   "engines": {
     "node": ">=20"

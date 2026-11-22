@@ -61,7 +61,7 @@ docker compose -f compose.hub.yaml up -d
 docker compose -f compose.hub.yaml ps
 ```
 Replace `DASHBOARD_ADMIN_PASSWORD` with a strong, unique password before the first start. Open `http://SERVER-IP:8080`.
-On first start, the app **copies bundled example files from `/sample-site` into `/site` when `/site/config.json` is missing**. You normally do not need to copy the repository's `site/` contents manually when using a matching, current Docker Hub image. **Caution:** when `config.json` is missing, this initialization can overwrite other files in `/site` that share the example filenames. Always back up `site/` before deleting `config.json`.
+On first start, the app creates `/site/config.json` from `/app/defaults/config.json` only if it does not exist. Frontend assets (`index.html`, `app.js`, `style.css`) are served from **`/app/public/` inside the Docker image** and are never copied to `/site`. Existing `/site/config.json` is preserved.
 The Docker Hub image is independently published. If its behavior differs from the GitHub source, verify the image version and its bundled files.
 ### Option C — Docker run
 
@@ -100,9 +100,9 @@ Copy `env.example` to `.env`. The settings below can be changed:
 
 | Host directory | Container directory | Contents |
 | --- | --- | --- |
-| `./site` | `/site` | `config.json`, `status.json`, HTML, JS, CSS and other site assets |
+| `./site` | `/site` | Runtime `config.json` and `status.json` (legacy frontend files here are ignored) |
 | `./data` | `/data` | `security.json` and `backups/` |
-These are **bind mounts**. Recreating/updating the container does not automatically delete their contents, but **updating the Docker image does not overwrite existing customized site files** either. New frontend fixes in an image may require carefully updating your files in `site/`. Back up files and compare them with the new image's `/sample-site` before replacing anything.
+These are **bind mounts**. Recreating/updating the container does not delete their contents. The frontend is **served from `/app/public/` in the image**; rebuilding or pulling an updated image updates frontend assets automatically. Old `/site/app.js`, `/site/index.html`, and `/site/style.css` files are not used and do not need replacing. Back up `site/` and `data/` before updating.
 The first start initializes `data/security.json` with a **scrypt password hash** from `DASHBOARD_ADMIN_PASSWORD`. Changing `.env` later **does not change an existing admin password**. Use the Security panel to change it. As a last-resort reset, back up `/data/security.json`, stop the container, remove that file, verify `.env`, and start again. This recreates the file and can reset security-related settings. Do not delete the whole `data/` directory or its backups.
 Back up **both** `site/` and `data/` before migrations or major updates. Do not commit `.env` or `data/security.json` to Git.
 ## Status checks
@@ -167,7 +167,7 @@ docker compose -f compose.hub.yaml pull
 docker compose -f compose.hub.yaml up -d
 ```
 
-Before updating, back up both persistent directories. Check whether files already stored in `site/` need a manual migration; they are not automatically refreshed with the image.
+Before updating, back up both persistent directories. The frontend comes from the new image; runtime config and security data remain in their mounted directories.
 ## Useful commands
 
 For source builds, remove `-f compose.hub.yaml` from these examples.
@@ -187,10 +187,10 @@ docker exec dsdashboard /bin/bash /app/check-services.sh
 ```
 ## Adding icons
 
-The frontend's icon picker list is implemented in `/site/app.js`. You can customize it in the persistent `site/app.js` file. Save a backup first; local modifications remain after container updates, so new upstream frontend changes will **not** automatically replace them.
+The frontend icon picker is implemented in **`site/app.js` in this repository**, which Docker builds into `/app/public/app.js`. To add icons, edit the source file, commit, build/publish a new image and redeploy it. Editing `/site/app.js` inside the running container does **not** affect the served frontend. `ICONS` supplies host icons; `SECTION_ICONS` shares the same library for section icons.
 ## Troubleshooting
 - **Cannot log in after changing `.env`:** the initial password hash remains in `/data/security.json`; use Security settings or follow the careful reset procedure above.
-- **Blank page or missing assets:** check that `/site` contains `index.html`, `app.js`, and `style.css`; examine logs for initialization errors and ensure directory write permissions.
+- **Blank page or missing assets:** check `/app/public/index.html`, `/app/public/app.js`, and `/app/public/style.css` in the image; check the browser Console and container logs. Verify the browser is not serving a cached older `app.js`.
 - **No status information:** check `/site/config.json`, run the manual status check, and inspect `/site/status.json`.
 - **Port 8080 already in use:** change `DASHBOARD_PORT` in `.env` and recreate the Compose service.
 - **Unhealthy container:** inspect `docker logs dsdashboard` and test `docker exec dsdashboard wget -qO- http://127.0.0.1:3000/api/status`.
@@ -198,7 +198,7 @@ The frontend's icon picker list is implemented in `/site/app.js`. You can custom
 
 See [LICENSE](LICENSE) in this repository.
 ## Automated weekly Docker rebuilds and controlled updates
-The GitHub Actions workflow `.github/workflows/build.yml` builds both `linux/amd64` and `linux/arm64` images for Docker Hub (`d0sn/dsdashboard`) and GHCR (`ghcr.io/dosenthegit/dsdashboard`). It runs on commits to `main`, on version tags, manually, and **every Sunday at 03:00 UTC** (04:00 Swedish standard time / 05:00 Swedish daylight time). Normal builds use layer cache. Scheduled builds always pull the base image and rebuild without cache; manual runs can also request a full rebuild.
+The GitHub Actions workflow `.github/workflows/build.yml` builds both `linux/amd64` and `linux/arm64` images for Docker Hub (`d0sn/dsdashboard`) and GHCR (`ghcr.io/dosenthegit/dsdashboard`). It runs on commits to `main`, on version tags, manually, and **every Sunday at 05:35 Europe/Stockholm** (as configured in the workflow). Normal builds use layer cache. Scheduled builds always pull the base image and rebuild without cache; manual runs can also request a full rebuild.
 The Dockerfile uses `node:24-alpine`, so Node 24 receives available patch releases without silently switching the Node major version. Weekly rebuilding does not guarantee that every dependency is upgraded or that the image is vulnerability-free. A passing GitHub Actions workflow only **publishes** the image: it does not restart a running dashboard.
 For an existing deployment using `compose.hub.yaml`, first back up `.env`, `site/`, and `data/`. From the deployment directory containing `compose.hub.yaml`, run:
 
