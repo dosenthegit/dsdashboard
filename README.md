@@ -208,3 +208,13 @@ For an existing deployment using `compose.hub.yaml`, first back up `.env`, `site
 `update.sh` downloads the new Docker Hub image, backs up persistent data under `./backups/`, restarts the service, and waits for Docker health status. It does not change passwords or automatically roll back a failed upgrade. Keep the old image and archive available if manual recovery is needed. The deployment script expects `scripts/update.sh` and `compose.hub.yaml` in the same project directory.
 For a source-built deployment, continue using `git pull && docker compose up -d --build`; `update.sh` is for published-image deployments only.
 The workflow expects repository **variable** `DOCKERHUB_USERNAME` and repository **secret** `DOCKERHUB_TOKEN`, matching the existing publishing setup. It also syncs README.md to Docker Hub after successful builds on `main`. To deploy from GHCR instead, change the `image:` value in `compose.hub.yaml` to `ghcr.io/dosenthegit/dsdashboard:latest`.
+
+
+## Dashboard Icons integration
+
+The host and section icon pickers support both built-in emoji icons and [Dashboard Icons](https://dashboardicons.com/) product logos. Search the curated list or enter a kebab-case icon slug from Dashboard Icons.
+
+- Emojis are stored as before (e.g. `🐳`); Dashboard Icons are stored as `di:proxmox`, `di:synology`, `di:jellyfin`. Existing configurations do not require migration.
+- Logos load from the jsDelivr Dashboard Icons CDN when the dashboard is opened. An internet connection and permission to access that CDN are needed; an unavailable icon falls back to a generic symbol.
+- Search the full catalog at dashboardicons.com and copy the slug into the icon picker if an icon is not in the curated list. Some icon slugs may not exist or change; the icon picker does not guarantee slug availability.
+- External brand icons remain the property of their respective owners.

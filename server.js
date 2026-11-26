@@ -637,7 +637,7 @@ function setSecurityHeaders(res) {
     res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
     res.setHeader("Content-Security-Policy", [
         "default-src 'self'",
-        "img-src 'self' data:",
+        "img-src 'self' data: https://cdn.jsdelivr.net",
         "style-src 'self' 'unsafe-inline'",
         "script-src 'self'",
         "connect-src 'self'",

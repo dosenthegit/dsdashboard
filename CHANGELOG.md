@@ -1,3 +1,10 @@
+## Dashboard Icons integration (2026-11-26)
+
+- Added searchable emoji and Dashboard Icons pickers for hosts and sections.
+- Added `di:<slug>` image rendering in service cards, section headers, live preview, and mobile preview.
+- Kept existing emoji configuration fully compatible.
+- Icons are loaded from jsDelivr and need network access; broken assets fall back to an emoji.
+
 # DSDashboard – update bundle changelog
 
 ## 2026-11-22 – Frontend startup fix

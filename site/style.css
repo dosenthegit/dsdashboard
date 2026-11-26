@@ -1124,3 +1124,18 @@ textarea {
 .configuration-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .configuration-actions .button { flex: 1 1 180px; }
 .configuration-backup-status { margin: 12px 0 0; font-size: 12px; color: var(--muted-strong); }
+
+/* Dashboard Icons: consistent sizing across cards, section headings and pickers. */
+.dashboard-icon-img { display: inline-block; width: 1em; height: 1em; object-fit: contain; vertical-align: middle; }
+.card-icon .dashboard-icon-img { width: 42px; height: 42px; }
+.section-icon .dashboard-icon-img { width: 24px; height: 24px; }
+.icon-choice .dashboard-icon-img { width: 27px; height: 27px; }
+.phone-service-title .dashboard-icon-img { width: 17px; height: 17px; }
+.icon-browser { margin: 10px 0 16px; }
+.icon-browser-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.icon-browser-search { margin-bottom: 8px; }
+.icon-browser-grid { max-height: 240px; overflow-y: auto; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); padding: 4px; }
+.icon-choice { display: grid; place-items: center; cursor: pointer; }
+.icon-custom-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.icon-custom-row input { flex: 1 1 180px; min-width: 0; }
+.icon-custom-row button { flex: 0 0 auto; }

@@ -13,3 +13,17 @@ if (missing.length) {
     process.exit(1);
 }
 console.log("Frontend DOM ID check passed.");
+
+// Dashboard Icons regression checks: picker references and CDN CSP.
+const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+for (const token of ["mountIconPicker(", "iconSelectOptions(", "setIcon(icon, section.icon", "setIcon(icon, item.icon", "setIcon(preview.querySelector", "createIconNode(item.icon"]) {
+    if (!js.includes(token)) {
+        console.error("Dashboard Icons integration missing:", token);
+        process.exit(1);
+    }
+}
+if (!server.includes("img-src 'self' data: https://cdn.jsdelivr.net")) {
+    console.error("Dashboard Icons CDN is blocked by CSP");
+    process.exit(1);
+}
+console.log("Dashboard Icons integration checks passed.");

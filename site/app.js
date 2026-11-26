@@ -23,6 +23,161 @@
 ];
 
     const SECTION_ICONS = ["▦", "⭐", ...ICONS];
+    // Curated Dashboard Icons. Other icons can be used by entering their slug.
+    // https://github.com/homarr-labs/dashboard-icons
+    const DASHBOARD_ICON_NAMES = [
+        "proxmox", "proxmox-light", "proxmox-backup-server", "docker", "portainer", "kubernetes", "helm", "podman",
+        "synology", "truenas", "truenas-scale", "unraid", "openmediavault", "minio", "nextcloud", "filebrowser",
+        "vmware", "esxi", "nutanix", "hyper-v", "virtualbox", "ubuntu", "debian", "alpine-linux", "linux", "windows", "linux-mint",
+        "cisco", "unifi", "ubiquiti", "pfsense", "opnsense", "mikrotik", "openwrt", "tailscale", "wireguard", "nginx-proxy-manager",
+        "traefik", "caddy", "nginx", "cloudflare", "adguard-home", "pihole", "technitium", "speedtest-tracker", "uptime-kuma",
+        "checkmk", "zabbix", "grafana", "prometheus", "graylog", "loki", "influxdb", "netdata", "glances",
+        "veeam", "duplicati", "restic", "borgbackup", "urbackup", "duplicacy",
+        "jellyfin", "plex", "emby", "sonarr", "radarr", "prowlarr", "bazarr", "jellyseerr", "overseerr", "navidrome", "immich", "photoprism",
+        "home-assistant", "homebridge", "node-red", "mosquitto", "zigbee2mqtt", "frigate", "scrypted",
+        "vaultwarden", "bitwarden", "authentik", "authelia", "keycloak", "crowdsec", "wazuh",
+        "github", "gitlab", "gitea", "forgejo", "jenkins", "ansible", "terraform", "n8n", "code-server", "vscode",
+        "postgresql", "mysql", "mariadb", "mongodb", "redis", "elasticsearch", "opensearch", "adminer", "phpmyadmin",
+        "homepage", "homarr", "dashy", "heimdall", "dockge", "dozzle", "watchtower", "portainer", "bookstack", "wikijs"
+    ];
+    const DASHBOARD_ICONS = [...new Set(DASHBOARD_ICON_NAMES)].map(name => `di:${name}`);
+    const ALL_ICONS = [...new Set([...ICONS, ...DASHBOARD_ICONS])];
+    const ALL_SECTION_ICONS = [...new Set([...SECTION_ICONS, ...DASHBOARD_ICONS])];
+    const DASHBOARD_ICON_CDN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/";
+    const DASHBOARD_ICON_PATTERN = /^di:([a-z0-9]+(?:-[a-z0-9]+)*)$/;
+
+    function iconIsDashboard(value) {
+        return DASHBOARD_ICON_PATTERN.test(String(value || ""));
+    }
+
+    function iconLabel(value) {
+        return iconIsDashboard(value) ? `Dashboard Icons: ${value.slice(3)}` : value;
+    }
+
+    function iconUrl(value) {
+        const match = String(value || "").match(DASHBOARD_ICON_PATTERN);
+        return match ? `${DASHBOARD_ICON_CDN}${match[1]}.svg` : null;
+    }
+
+    function createIconNode(value, fallback = "🌐") {
+        const url = iconUrl(value);
+        if (!url) {
+            const span = document.createElement("span");
+            span.textContent = value || fallback;
+            return span;
+        }
+        const img = document.createElement("img");
+        img.className = "dashboard-icon-img";
+        img.src = url;
+        img.alt = value.slice(3).replace(/-/g, " ");
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+        img.onerror = () => {
+            const replacement = document.createElement("span");
+            replacement.textContent = fallback;
+            replacement.title = `Icon unavailable: ${value}`;
+            img.replaceWith(replacement);
+        };
+        return img;
+    }
+
+    function setIcon(element, value, fallback = "🌐") {
+        element.replaceChildren(createIconNode(value, fallback));
+    }
+
+    function iconOptions(values, selected) {
+        return [...new Set([...values, ...(selected && !values.includes(selected) ? [selected] : [])])]
+            .map(value => ({ value, label: iconLabel(value) }));
+    }
+
+    function iconSelectOptions(values, selected) {
+        return iconOptions(values, selected)
+            .map(option => `<option value="${escapeAttr(option.value)}" ${option.value === selected ? "selected" : ""}>${escapeHtml(option.label)}</option>`)
+            .join("");
+    }
+
+    function mountIconPicker(select, onSelect, options = {}) {
+        const container = document.createElement("div");
+        container.className = "icon-browser";
+        const tabs = document.createElement("div");
+        tabs.className = "icon-browser-tabs";
+        const emojis = createButton("Emojis", "button button-secondary", () => changeTab("emoji"));
+        const dashboard = createButton("Dashboard Icons", "button button-secondary", () => changeTab("dashboard"));
+        tabs.append(emojis, dashboard);
+        const search = document.createElement("input");
+        search.type = "search";
+        search.className = "form-control icon-browser-search";
+        search.placeholder = "Search icons (e.g. proxmox, docker)...";
+        search.setAttribute("aria-label", "Search icons");
+        const grid = document.createElement("div");
+        grid.className = "icon-picker-grid icon-browser-grid";
+        const customRow = document.createElement("div");
+        customRow.className = "icon-custom-row";
+        const custom = document.createElement("input");
+        custom.className = "form-control";
+        custom.placeholder = "Other Dashboard Icons slug, e.g. proxmox";
+        custom.setAttribute("aria-label", "Dashboard Icons slug");
+        const customButton = createButton("Use icon", "button button-secondary", () => {
+            const slug = custom.value.toLowerCase().trim().replace(/^di:/, "");
+            const value = `di:${slug}`;
+            if (!iconIsDashboard(value)) {
+                custom.setCustomValidity("Only lowercase letters, digits and hyphens are allowed.");
+                custom.reportValidity();
+                return;
+            }
+            custom.setCustomValidity("");
+            choose(value);
+        });
+        customRow.append(custom, customButton);
+        container.append(tabs, search, grid, customRow);
+        let tab = iconIsDashboard(select.value) ? "dashboard" : "emoji";
+        function choose(value) {
+            if (![...select.options].some(option => option.value === value)) {
+                select.add(new Option(iconLabel(value), value));
+            }
+            select.value = value;
+            onSelect();
+            updateGrid();
+        }
+        function changeTab(next) {
+            tab = next;
+            search.value = "";
+            updateGrid();
+        }
+        function updateGrid() {
+            emojis.classList.toggle("button-primary", tab === "emoji");
+            dashboard.classList.toggle("button-primary", tab === "dashboard");
+            customRow.classList.toggle("hidden", tab !== "dashboard");
+            search.placeholder = tab === "dashboard" ? "Search products (e.g. jellyfin)..." : "Search emojis";
+            const query = search.value.toLowerCase().trim();
+            const source = tab === "dashboard" ? DASHBOARD_ICONS : ICONS;
+            const choices = source.filter(icon => iconLabel(icon).toLowerCase().includes(query));
+            grid.replaceChildren();
+            choices.forEach(value => {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = `icon-choice ${select.value === value ? "active" : ""}`;
+                button.title = iconLabel(value);
+                button.setAttribute("aria-label", `Select ${iconLabel(value)}`);
+                button.appendChild(createIconNode(value, "❔"));
+                button.addEventListener("click", () => choose(value));
+                grid.appendChild(button);
+            });
+            if (!choices.length) {
+                const empty = document.createElement("p");
+                empty.textContent = tab === "dashboard" ? "No matches. Enter a Dashboard Icons slug below." : "No matching emojis.";
+                grid.appendChild(empty);
+            }
+        }
+        search.addEventListener("input", updateGrid);
+        select.addEventListener("change", () => {
+            tab = iconIsDashboard(select.value) ? "dashboard" : "emoji";
+            updateGrid();
+        });
+        updateGrid();
+        return container;
+    }
+
     const SECTION_COLORS = ["blue", "green", "purple", "pink", "orange", "red", "slate", "cyan"];
     const COLOR_VALUES = {
         blue: "#3b82f6",
@@ -372,7 +527,7 @@
 
         const icon = document.createElement("div");
         icon.className = "section-icon";
-        icon.textContent = section.icon || "▦";
+        setIcon(icon, section.icon, "▦");
         icon.style.color = COLOR_VALUES[section.color] || COLOR_VALUES.blue;
         heading.appendChild(icon);
 
@@ -439,7 +594,7 @@
         const content = document.createElement("div");
         const icon = document.createElement("div");
         icon.className = "card-icon";
-        icon.textContent = item.icon || "🌍";
+        setIcon(icon, item.icon, "🌍");
         content.appendChild(icon);
 
         const title = document.createElement("h3");
@@ -496,7 +651,8 @@
         form.appendChild(createInputField("Name", "newHostName", "e.g. My Service"));
         form.appendChild(createTextAreaField("Description", "newHostDescription", "e.g. Service description"));
         form.appendChild(createInputField("URL / IP", "newHostUrl", "e.g. https://example.local"));
-        form.appendChild(createSelectField("Icon", "newHostIcon", ICONS.map((icon) => ({ value: icon, label: icon })), "🌍"));
+        form.appendChild(createSelectField("Icon", "newHostIcon", iconOptions(ALL_ICONS, "🌍"), "🌍"));
+        form.appendChild(mountIconPicker(form.querySelector("#newHostIcon"), () => updateHostPreview(form, preview)));
         form.appendChild(createCheckboxField("Invert status", "newHostInvert", false));
 
         const preview = document.createElement("div");
@@ -547,7 +703,8 @@
 
         form.appendChild(createSelectField("Section", "quickSectionIndex", state.config.sections.map((entry, entryIndex) => ({ value: String(entryIndex), label: entry.title })), String(index)));
         form.appendChild(createInputField("Title", "quickSectionTitle", "Section title", section.title));
-        form.appendChild(createSelectField("Icon", "quickSectionIcon", SECTION_ICONS.map((icon) => ({ value: icon, label: icon })), section.icon || "▦"));
+        form.appendChild(createSelectField("Icon", "quickSectionIcon", iconOptions(ALL_SECTION_ICONS, section.icon || "▦"), section.icon || "▦"));
+        form.appendChild(mountIconPicker(form.querySelector("#quickSectionIcon"), () => {}));
         form.appendChild(createColorPicker("quickSectionColor", section.color || "blue"));
 
         const actions = document.createElement("div");
@@ -580,7 +737,8 @@
         const form = document.createElement("form");
         form.noValidate = true;
         form.appendChild(createInputField("Title", "sideNewSectionTitle", "e.g. Kubernetes"));
-        form.appendChild(createSelectField("Icon", "sideNewSectionIcon", SECTION_ICONS.map((icon) => ({ value: icon, label: icon })), "▦"));
+        form.appendChild(createSelectField("Icon", "sideNewSectionIcon", iconOptions(ALL_SECTION_ICONS, "▦"), "▦"));
+        form.appendChild(mountIconPicker(form.querySelector("#sideNewSectionIcon"), () => {}));
         form.appendChild(createColorPicker("sideNewSectionColor", "purple"));
         form.appendChild(createButton("+ Add Section", "button button-primary full-width", null, "submit"));
         form.addEventListener("submit", async (event) => {
@@ -757,10 +915,13 @@
             const row = document.createElement("div");
             row.className = "phone-service";
             const isOnline = getItemStatus(item);
-            row.innerHTML = `
-                <div class="phone-service-title">${escapeHtml(item.icon || "🌍")} ${escapeHtml(item.name)}</div>
-                <small class="${isOnline ? "green" : "red"}">● ${isOnline ? "Online" : "Offline"}</small>
-            `;
+            const serviceTitle = document.createElement("div");
+            serviceTitle.className = "phone-service-title";
+            serviceTitle.append(createIconNode(item.icon || "🌍"), document.createTextNode(` ${item.name}`));
+            const serviceStatus = document.createElement("small");
+            serviceStatus.className = isOnline ? "green" : "red";
+            serviceStatus.textContent = `● ${isOnline ? "Online" : "Offline"}`;
+            row.append(serviceTitle, serviceStatus);
             screen.appendChild(row);
         });
 
@@ -1086,7 +1247,7 @@
                     <div class="form-field">
                         <label for="hostIcon">Icon</label>
                         <select class="form-select" id="hostIcon">
-                            ${ICONS.map((icon) => `<option value="${escapeAttr(icon)}" ${icon === item.icon ? "selected" : ""}>${escapeHtml(icon)}</option>`).join("")}
+                            ${iconSelectOptions(ALL_ICONS, item.icon)}
                         </select>
                     </div>
                     <label class="checkbox-row">
@@ -1102,7 +1263,7 @@
                     <h3>Live Preview</h3>
                     <div id="hostLivePreview" class="preview-card"></div>
                     <h3>Icon Picker</h3>
-                    <div class="icon-picker-grid" id="hostIconGrid"></div>
+                    <div id="hostIconGrid"></div>
                 </aside>
             </div>
         `;
@@ -1110,7 +1271,7 @@
         const form = content.querySelector("#editHostForm");
         const preview = content.querySelector("#hostLivePreview");
         const iconSelect = content.querySelector("#hostIcon");
-        renderIconGrid(content.querySelector("#hostIconGrid"), iconSelect, () => updateHostPreview(form, preview));
+        content.querySelector("#hostIconGrid").appendChild(mountIconPicker(iconSelect, () => updateHostPreview(form, preview)));
         form.addEventListener("input", () => updateHostPreview(form, preview));
         iconSelect.addEventListener("change", () => updateHostPreview(form, preview));
         updateHostPreview(form, preview);
@@ -1149,9 +1310,10 @@
                 <div class="form-field">
                     <label for="sectionIcon">Icon</label>
                     <select class="form-select" id="sectionIcon">
-                        ${SECTION_ICONS.map((icon) => `<option value="${escapeAttr(icon)}" ${icon === section.icon ? "selected" : ""}>${escapeHtml(icon)}</option>`).join("")}
+                        ${iconSelectOptions(ALL_SECTION_ICONS, section.icon)}
                     </select>
                 </div>
+                <div id="sectionIconPickerMount"></div>
                 <div id="sectionColorMount"></div>
                 <div class="form-actions">
                     <button class="button button-secondary" type="button" data-close>Cancel</button>
@@ -1160,6 +1322,7 @@
             </form>
         `;
         openModal(content);
+        content.querySelector("#sectionIconPickerMount").appendChild(mountIconPicker(content.querySelector("#sectionIcon"), () => {}));
         content.querySelector("#sectionColorMount").appendChild(createColorPicker("modalSectionColor", section.color || "blue"));
         content.querySelector(".modal-close").addEventListener("click", closeModal);
         content.querySelector("[data-close]").addEventListener("click", closeModal);
@@ -1268,23 +1431,6 @@
         elements.modal.innerHTML = "";
     }
 
-    function renderIconGrid(container, select, onSelect) {
-        container.innerHTML = "";
-        ICONS.forEach((icon) => {
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = `icon-choice ${select.value === icon ? "active" : ""}`;
-            button.textContent = icon;
-            button.addEventListener("click", () => {
-                select.value = icon;
-                container.querySelectorAll(".icon-choice").forEach((entry) => entry.classList.remove("active"));
-                button.classList.add("active");
-                onSelect();
-            });
-            container.appendChild(button);
-        });
-    }
-
     function readHostForm(form) {
         return {
             id: form.querySelector("#hostId, #newHostId")?.value.trim(),
@@ -1299,11 +1445,12 @@
     function updateHostPreview(form, preview) {
         const data = readHostForm(form);
         preview.innerHTML = `
-            <div class="card-icon">${escapeHtml(data.icon || "🌍")}</div>
+            <div class="card-icon"></div>
             <h3 class="card-title">${escapeHtml(data.name || "New Host")}</h3>
             <div class="card-description">${escapeHtml(data.description || "Description")}</div>
             <div class="status status-online"><span class="status-dot"></span><span>Live preview</span></div>
         `;
+        setIcon(preview.querySelector(".card-icon"), data.icon || "🌍", "🌍");
     }
 
     async function addHostFromForm(form) {
