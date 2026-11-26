@@ -640,7 +640,7 @@ function setSecurityHeaders(res) {
         "img-src 'self' data: https://cdn.jsdelivr.net",
         "style-src 'self' 'unsafe-inline'",
         "script-src 'self'",
-        "connect-src 'self'",
+        "connect-src 'self' https://cdn.jsdelivr.net",
         "form-action 'self' https://www.google.com",
         "object-src 'none'",
         "base-uri 'none'",

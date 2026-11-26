@@ -1,3 +1,9 @@
+## Dashboard Icons catalog update (2026-11-26)
+
+- Icon search loads the complete native Dashboard Icons file index instead of only a small hard-coded list.
+- Supports SVG and PNG-only icons, keeps the curated fallback, and limits displayed matches for performance.
+- Allows jsDelivr catalog requests in Content Security Policy.
+
 ## Dashboard Icons integration (2026-11-26)
 
 - Added searchable emoji and Dashboard Icons pickers for hosts and sections.

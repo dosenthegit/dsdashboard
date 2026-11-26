@@ -40,7 +40,48 @@
         "postgresql", "mysql", "mariadb", "mongodb", "redis", "elasticsearch", "opensearch", "adminer", "phpmyadmin",
         "homepage", "homarr", "dashy", "heimdall", "dockge", "dozzle", "watchtower", "portainer", "bookstack", "wikijs"
     ];
+    // The built-in list is a fallback until the full upstream catalog loads.
     const DASHBOARD_ICONS = [...new Set(DASHBOARD_ICON_NAMES)].map(name => `di:${name}`);
+    const DASHBOARD_ICON_INDEX_URL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons@main/tree.json";
+    let dashboardIconCatalog = DASHBOARD_ICONS;
+    let dashboardIconFormats = new Map();
+    let dashboardIconCatalogPromise = null;
+
+    function loadDashboardIconCatalog() {
+        if (dashboardIconCatalogPromise) return dashboardIconCatalogPromise;
+        dashboardIconCatalogPromise = fetch(DASHBOARD_ICON_INDEX_URL, { cache: "default" })
+            .then(response => {
+                if (!response.ok) throw new Error(`Icon catalog HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(tree => {
+                // Upstream tree.json has svg/png/webp arrays of filenames.
+                if (!tree || !Array.isArray(tree.svg) || !Array.isArray(tree.png)) {
+                    throw new Error("Invalid Dashboard Icons catalog");
+                }
+                const formats = new Map();
+                for (const format of ["png", "webp", "svg"]) {
+                    if (!Array.isArray(tree[format])) continue;
+                    for (const filename of tree[format]) {
+                        if (typeof filename !== "string" || !filename.endsWith(`.${format}`)) continue;
+                        const slug = filename.slice(0, -(format.length + 1));
+                        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) continue;
+                        // SVG has priority over other formats.
+                        if (!formats.has(slug) || format === "svg") formats.set(slug, format);
+                    }
+                }
+                if (formats.size < 100) throw new Error("Dashboard Icons catalog is incomplete");
+                dashboardIconFormats = formats;
+                dashboardIconCatalog = [...formats.keys()].sort((a, b) => a.localeCompare(b)).map(slug => `di:${slug}`);
+                return dashboardIconCatalog;
+            })
+            .catch(error => {
+                console.warn("Unable to load full Dashboard Icons catalog; using built-in icons:", error);
+                dashboardIconCatalog = DASHBOARD_ICONS;
+                return dashboardIconCatalog;
+            });
+        return dashboardIconCatalogPromise;
+    }
     const ALL_ICONS = [...new Set([...ICONS, ...DASHBOARD_ICONS])];
     const ALL_SECTION_ICONS = [...new Set([...SECTION_ICONS, ...DASHBOARD_ICONS])];
     const DASHBOARD_ICON_CDN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/";
@@ -56,7 +97,7 @@
 
     function iconUrl(value) {
         const match = String(value || "").match(DASHBOARD_ICON_PATTERN);
-        return match ? `${DASHBOARD_ICON_CDN}${match[1]}.svg` : null;
+        return match ? `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/${dashboardIconFormats.get(match[1]) || "svg"}/${match[1]}.${dashboardIconFormats.get(match[1]) || "svg"}` : null;
     }
 
     function createIconNode(value, fallback = "🌐") {
@@ -73,6 +114,17 @@
         img.loading = "lazy";
         img.referrerPolicy = "no-referrer";
         img.onerror = () => {
+            // Some upstream icons have only a PNG or WebP version.
+            const current = new URL(img.src).pathname;
+            const slug = value.slice(3);
+            if (current.endsWith(".svg")) {
+                img.src = `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/${slug}.png`;
+                return;
+            }
+            if (current.endsWith(".png")) {
+                img.src = `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/${slug}.webp`;
+                return;
+            }
             const replacement = document.createElement("span");
             replacement.textContent = fallback;
             replacement.title = `Icon unavailable: ${value}`;
@@ -131,6 +183,17 @@
         customRow.append(custom, customButton);
         container.append(tabs, search, grid, customRow);
         let tab = iconIsDashboard(select.value) ? "dashboard" : "emoji";
+        let catalogLoading = false;
+        if (tab === "dashboard") refreshCatalog();
+        function refreshCatalog() {
+            catalogLoading = true;
+            updateGrid();
+            loadDashboardIconCatalog().then(() => {
+                if (!container.isConnected) return;
+                catalogLoading = false;
+                updateGrid();
+            });
+        }
         function choose(value) {
             if (![...select.options].some(option => option.value === value)) {
                 select.add(new Option(iconLabel(value), value));
@@ -143,6 +206,7 @@
             tab = next;
             search.value = "";
             updateGrid();
+            if (tab === "dashboard" && !dashboardIconCatalogPromise) refreshCatalog();
         }
         function updateGrid() {
             emojis.classList.toggle("button-primary", tab === "emoji");
@@ -150,9 +214,14 @@
             customRow.classList.toggle("hidden", tab !== "dashboard");
             search.placeholder = tab === "dashboard" ? "Search products (e.g. jellyfin)..." : "Search emojis";
             const query = search.value.toLowerCase().trim();
-            const source = tab === "dashboard" ? DASHBOARD_ICONS : ICONS;
-            const choices = source.filter(icon => iconLabel(icon).toLowerCase().includes(query));
+            const source = tab === "dashboard" ? dashboardIconCatalog : ICONS;
+            const choices = source.filter(icon => iconLabel(icon).toLowerCase().includes(query)).slice(0, 120);
             grid.replaceChildren();
+            if (tab === "dashboard" && catalogLoading) {
+                const info = document.createElement("p");
+                info.textContent = "Loading the full Dashboard Icons catalog...";
+                grid.appendChild(info);
+            }
             choices.forEach(value => {
                 const button = document.createElement("button");
                 button.type = "button";
@@ -165,7 +234,7 @@
             });
             if (!choices.length) {
                 const empty = document.createElement("p");
-                empty.textContent = tab === "dashboard" ? "No matches. Enter a Dashboard Icons slug below." : "No matching emojis.";
+                empty.textContent = tab === "dashboard" ? "No matches in the available catalog. You can enter a slug below." : "No matching emojis.";
                 grid.appendChild(empty);
             }
         }

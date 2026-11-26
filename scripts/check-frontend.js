@@ -27,3 +27,11 @@ if (!server.includes("img-src 'self' data: https://cdn.jsdelivr.net")) {
     process.exit(1);
 }
 console.log("Dashboard Icons integration checks passed.");
+
+if (!js.includes("loadDashboardIconCatalog()") || !js.includes("tree.json")) {
+    throw new Error("Full Dashboard Icons catalog integration missing");
+}
+if (!server.includes("connect-src 'self' https://cdn.jsdelivr.net")) {
+    throw new Error("Dashboard Icons catalog fetch blocked by CSP");
+}
+console.log("Full Dashboard Icons catalog checks passed.");

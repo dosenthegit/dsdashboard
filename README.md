@@ -212,9 +212,9 @@ The workflow expects repository **variable** `DOCKERHUB_USERNAME` and repository
 
 ## Dashboard Icons integration
 
-The host and section icon pickers support both built-in emoji icons and [Dashboard Icons](https://dashboardicons.com/) product logos. Search the curated list or enter a kebab-case icon slug from Dashboard Icons.
+The host and section icon pickers support both built-in emoji icons and [Dashboard Icons](https://dashboardicons.com/) product logos. Search the full Dashboard Icons native catalog (loaded when the picker opens), or enter a kebab-case icon slug manually.
 
 - Emojis are stored as before (e.g. `🐳`); Dashboard Icons are stored as `di:proxmox`, `di:synology`, `di:jellyfin`. Existing configurations do not require migration.
 - Logos load from the jsDelivr Dashboard Icons CDN when the dashboard is opened. An internet connection and permission to access that CDN are needed; an unavailable icon falls back to a generic symbol.
-- Search the full catalog at dashboardicons.com and copy the slug into the icon picker if an icon is not in the curated list. Some icon slugs may not exist or change; the icon picker does not guarantee slug availability.
+- The picker loads the native SVG/PNG/WebP file index from Dashboard Icons using jsDelivr, and displays up to 120 results per query to keep the browser responsive. If the index cannot be downloaded, the curated list remains available and custom slugs still work. Some icons visible on dashboardicons.com come from third-party catalogs and are not part of the native Dashboard Icons repository; these are not indexed here.
 - External brand icons remain the property of their respective owners.
