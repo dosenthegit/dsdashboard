@@ -30,7 +30,7 @@
         </div>
     </header>
 
-    <section class="stats-grid" aria-label="Dashboard status summary">
+    <section id="statsGrid" class="stats-grid" aria-label="Dashboard status summary">
         <article class="stat-card">
             <div class="stat-icon services-icon">▦</div>
             <div>
@@ -59,9 +59,32 @@
             <div class="stat-icon uptime-icon">⌁</div>
             <div>
                 <div class="stat-number green" id="uptimePercent">0%</div>
-                <div class="stat-label">Uptime</div>
+                <div class="stat-label">Uptime (24h)</div>
             </div>
         </article>
+    </section>
+
+    <div id="summaryNote" class="summary-note" aria-live="polite"></div>
+
+    <section id="dashboardControls" class="dashboard-controls" aria-label="Dashboard filters and layout">
+        <label class="search-field" for="serviceSearch"><span aria-hidden="true">⌕</span>
+            <input id="serviceSearch" type="search" placeholder="Search your services… (Ctrl+K)" autocomplete="off">
+        </label>
+        <label class="control-label" for="statusFilter">Status
+            <select id="statusFilter" class="form-select">
+                <option value="all">All</option><option value="favorites">Favorites</option>
+                <option value="online">Online</option><option value="warning">Warning</option>
+                <option value="offline">Offline</option><option value="unknown">Unknown</option>
+                <option value="maintenance">Maintenance</option>
+            </select>
+        </label>
+        <button id="favoritesFilter" type="button" class="button button-secondary" title="Show saved favorites">★ Favorites</button>
+        <label class="control-label" for="layoutMode">Layout
+            <select id="layoutMode" class="form-select">
+                <option value="normal">Normal</option><option value="compact">Compact</option><option value="large">Large</option>
+            </select>
+        </label>
+        <label class="view-checkbox"><input type="checkbox" id="hideServiceStatus"> Hide status</label>
     </section>
 
     <section id="editorToolbar" class="editor-toolbar hidden" aria-label="Editor toolbar">

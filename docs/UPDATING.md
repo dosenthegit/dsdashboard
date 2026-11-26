@@ -10,3 +10,15 @@
 - The script does not automatically roll back; if it fails, inspect `docker compose -f compose.hub.yaml logs --tail=100`.
 - `node:24-alpine` keeps Node's major version fixed but follows minor/patch and Alpine updates within the image tag's underlying Alpine line. Re-evaluate base version before Node 24 end-of-life (April 2028).
 - Rebuilding without cache does not necessarily update pinned application packages. Review dependency security notices separately.
+
+## Upgrading to 4.0.0
+
+1. Back up `.env`, your runtime `site/` and persistent `data/` folders before updating.
+2. Push the updated source and review GitHub Actions `verify` before publication. If `verify` fails, the publish job will not run.
+3. Deploy the newly published image with `docker compose -f compose.hub.yaml pull && docker compose -f compose.hub.yaml up -d` (or `docker compose up -d --build` when building locally).
+4. The first new status check writes detailed records into the existing `/site/status.json` and creates `/data/status-history.json`. No manual config migration is required.
+5. `DASHBOARD_PRIVATE_VIEW=false` by default. To enable private browsing after the initial startup, sign into Edit Mode and use **Security → Private dashboard**. Restarting does not reset that choice.
+6. Existing host `url`, `invertStatus`, `icon`, and section details remain intact. Default check type is `auto`, and HTTPS warning threshold is 30 days.
+7. Monitor `docker logs dsdashboard`, and test `/api/health` for container health.
+
+Note: in 4.0.0 HTTP 4xx/5xx now report Offline by default. For health endpoints requiring authentication, use an expected HTTP code (for example `401`) or a separate TCP check. Existing dashboard entries are otherwise compatible, but status semantics deliberately changed.

@@ -1,11 +1,14 @@
 {
   "name": "dashboard-production-final",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
-  "description": "Production dashboard with password-protected edit mode, backups, import/export and drag/drop editing.",
+  "description": "Self-hosted service dashboard with live health checks, history, icons, backups and optional private view",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check site/app.js && node scripts/check-frontend.js"
+    "check": "node --check server.js && node --check status-checker.js && node --check site/app.js && node scripts/check-frontend.js",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "node tests/browser-smoke.js",
+    "test:browser:offline": "node tests/browser-ui-offline.js"
   },
   "engines": {
     "node": ">=20"

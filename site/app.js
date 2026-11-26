@@ -42,7 +42,7 @@
     ];
     // The built-in list is a fallback until the full upstream catalog loads.
     const DASHBOARD_ICONS = [...new Set(DASHBOARD_ICON_NAMES)].map(name => `di:${name}`);
-    const DASHBOARD_ICON_INDEX_URL = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons@main/tree.json";
+    const DASHBOARD_ICON_INDEX_URL = "/api/icon-catalog";
     let dashboardIconCatalog = DASHBOARD_ICONS;
     let dashboardIconFormats = new Map();
     let dashboardIconCatalogPromise = null;
@@ -54,25 +54,12 @@
                 if (!response.ok) throw new Error(`Icon catalog HTTP ${response.status}`);
                 return response.json();
             })
-            .then(tree => {
-                // Upstream tree.json has svg/png/webp arrays of filenames.
-                if (!tree || !Array.isArray(tree.svg) || !Array.isArray(tree.png)) {
-                    throw new Error("Invalid Dashboard Icons catalog");
+            .then(catalog => {
+                if (!catalog || !Array.isArray(catalog.icons) || catalog.icons.length < 100) {
+                    throw new Error("Full icon index is not yet available");
                 }
-                const formats = new Map();
-                for (const format of ["png", "webp", "svg"]) {
-                    if (!Array.isArray(tree[format])) continue;
-                    for (const filename of tree[format]) {
-                        if (typeof filename !== "string" || !filename.endsWith(`.${format}`)) continue;
-                        const slug = filename.slice(0, -(format.length + 1));
-                        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) continue;
-                        // SVG has priority over other formats.
-                        if (!formats.has(slug) || format === "svg") formats.set(slug, format);
-                    }
-                }
-                if (formats.size < 100) throw new Error("Dashboard Icons catalog is incomplete");
-                dashboardIconFormats = formats;
-                dashboardIconCatalog = [...formats.keys()].sort((a, b) => a.localeCompare(b)).map(slug => `di:${slug}`);
+                dashboardIconFormats = new Map(Object.entries(catalog.formats || {}));
+                dashboardIconCatalog = catalog.icons.map(slug => `di:${slug}`);
                 return dashboardIconCatalog;
             })
             .catch(error => {
@@ -84,7 +71,7 @@
     }
     const ALL_ICONS = [...new Set([...ICONS, ...DASHBOARD_ICONS])];
     const ALL_SECTION_ICONS = [...new Set([...SECTION_ICONS, ...DASHBOARD_ICONS])];
-    const DASHBOARD_ICON_CDN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/";
+    const DASHBOARD_ICON_CDN = "/icons/";
     const DASHBOARD_ICON_PATTERN = /^di:([a-z0-9]+(?:-[a-z0-9]+)*)$/;
 
     function iconIsDashboard(value) {
@@ -97,7 +84,7 @@
 
     function iconUrl(value) {
         const match = String(value || "").match(DASHBOARD_ICON_PATTERN);
-        return match ? `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/${dashboardIconFormats.get(match[1]) || "svg"}/${match[1]}.${dashboardIconFormats.get(match[1]) || "svg"}` : null;
+        return match ? `${DASHBOARD_ICON_CDN}${match[1]}.${dashboardIconFormats.get(match[1]) || "svg"}` : null;
     }
 
     function createIconNode(value, fallback = "🌐") {
@@ -115,14 +102,14 @@
         img.referrerPolicy = "no-referrer";
         img.onerror = () => {
             // Some upstream icons have only a PNG or WebP version.
-            const current = new URL(img.src).pathname;
+            const current = img.getAttribute("src") || "";
             const slug = value.slice(3);
             if (current.endsWith(".svg")) {
-                img.src = `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/${slug}.png`;
+                img.src = `${DASHBOARD_ICON_CDN}${slug}.png`;
                 return;
             }
             if (current.endsWith(".png")) {
-                img.src = `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/${slug}.webp`;
+                img.src = `${DASHBOARD_ICON_CDN}${slug}.webp`;
                 return;
             }
             const replacement = document.createElement("span");
@@ -262,6 +249,14 @@
     const state = {
         config: { sections: [] },
         status: {},
+        history: {},
+        privateView: false,
+        locked: false,
+        search: "",
+        filter: "all",
+        layout: localStorage.getItem("dashboard-layout") || "normal",
+        hideStatus: localStorage.getItem("dashboard-hide-status") === "true",
+        favorites: new Set(readStoredArray("dashboard-favorites")),
         editMode: false,
         authenticated: false,
         csrfToken: null,
@@ -271,10 +266,15 @@
         drag: null,
         selectedSectionIndex: 0,
         theme: localStorage.getItem("dashboard-theme") || "dark",
-        collapsedSections: new Set(JSON.parse(localStorage.getItem("dashboard-collapsed-sections") || "[]"))
+        collapsedSections: new Set(readStoredArray("dashboard-collapsed-sections"))
     };
 
     const elements = {};
+
+    function readStoredArray(key) {
+        try { const v = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(v) ? v : []; }
+        catch (_) { return []; }
+    }
 
     document.addEventListener("DOMContentLoaded", init);
 
@@ -282,26 +282,52 @@
         bindElements();
         bindGlobalEvents();
         applyTheme();
-
+        applyViewPreferences();
         try {
-            await Promise.all([refreshSession(), loadConfig(), loadStatus()]);
-            if (state.authenticated) {
-                await loadSecurity();
-                await loadBackups();
+            await refreshSession();
+            if (state.privateView && !state.authenticated) {
+                state.locked = true;
+                render();
+            } else {
+                await Promise.all([loadConfig(), loadStatus(), loadHistory()]);
+                if (state.authenticated) await Promise.all([loadSecurity(), loadBackups()]);
+                render();
             }
-            render();
         } catch (error) {
-            showFatalError(error);
+            if (error.status === 401) {
+                state.locked = true;
+                state.config = { sections: [] };
+                state.status = {};
+                state.history = {};
+                render();
+            } else showFatalError(error);
         }
-
         window.setInterval(async () => {
+            if (state.locked) return;
             try {
-                await loadStatus();
+                await Promise.all([loadStatus(), loadHistory()]);
                 renderDashboardOnly();
             } catch (error) {
-                notify("warning", "Status update failed", error.message);
+                if (error.status === 401) {
+                    state.authenticated = false;
+                    state.locked = true;
+                    state.editMode = false;
+                    state.config = { sections: [] };
+                    state.status = {};
+                    state.history = {};
+                    render();
+                } else notify("warning", "Status update failed", error.message);
             }
         }, REFRESH_INTERVAL_MS);
+    }
+
+    function applyViewPreferences() {
+        if (!["normal", "compact", "large"].includes(state.layout)) state.layout = "normal";
+        document.body.classList.toggle("layout-compact", state.layout === "compact");
+        document.body.classList.toggle("layout-large", state.layout === "large");
+        document.body.classList.toggle("hide-service-status", state.hideStatus);
+        elements.layoutMode.value = state.layout;
+        elements.hideStatus.checked = state.hideStatus;
     }
 
     function bindElements() {
@@ -324,11 +350,36 @@
         elements.toastContainer = document.getElementById("toastContainer");
         elements.importFileInput = document.getElementById("importFileInput");
         elements.restoreFileInput = document.getElementById("restoreFileInput");
+        elements.search = document.getElementById("serviceSearch");
+        elements.statusFilter = document.getElementById("statusFilter");
+        elements.favoritesFilter = document.getElementById("favoritesFilter");
+        elements.layoutMode = document.getElementById("layoutMode");
+        elements.hideStatus = document.getElementById("hideServiceStatus");
+        elements.summaryNote = document.getElementById("summaryNote");
+        elements.statsGrid = document.getElementById("statsGrid");
+        elements.controls = document.getElementById("dashboardControls");
     }
 
     function bindGlobalEvents() {
         elements.editModeButton.addEventListener("click", handleEditModeButton);
         elements.toolbarExitButton.addEventListener("click", exitEditMode);
+        elements.search.addEventListener("input", () => { state.search = elements.search.value.trim().toLowerCase(); renderDashboard(); });
+        elements.statusFilter.addEventListener("change", () => { state.filter = elements.statusFilter.value; renderDashboard(); });
+        elements.favoritesFilter.addEventListener("click", () => {
+            state.filter = state.filter === "favorites" ? "all" : "favorites";
+            elements.statusFilter.value = state.filter;
+            renderDashboard();
+        });
+        elements.layoutMode.addEventListener("change", () => {
+            state.layout = elements.layoutMode.value;
+            localStorage.setItem("dashboard-layout", state.layout);
+            applyViewPreferences();
+        });
+        elements.hideStatus.addEventListener("change", () => {
+            state.hideStatus = elements.hideStatus.checked;
+            localStorage.setItem("dashboard-hide-status", String(state.hideStatus));
+            applyViewPreferences();
+        });
 
         elements.modalOverlay.addEventListener("click", (event) => {
             if (event.target === elements.modalOverlay) {
@@ -337,8 +388,14 @@
         });
 
         document.addEventListener("keydown", (event) => {
-            if (event.key === "Escape" && !elements.modalOverlay.classList.contains("hidden")) {
-                closeModal();
+            if (event.key === "Escape" && !elements.modalOverlay.classList.contains("hidden")) { closeModal(); return; }
+            const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "") || document.activeElement?.isContentEditable;
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+                event.preventDefault(); elements.search.focus(); elements.search.select();
+            } else if (event.key === "/" && !typing && !event.ctrlKey && !event.metaKey) {
+                event.preventDefault(); elements.search.focus();
+            } else if (event.key === "Escape" && document.activeElement === elements.search) {
+                elements.search.value = ""; state.search = ""; renderDashboard(); elements.search.blur();
             }
         });
 
@@ -392,7 +449,9 @@
 
         if (!response.ok) {
             const message = typeof payload === "object" && payload && payload.error ? payload.error : `Request failed: ${response.status}`;
-            throw new Error(message);
+            const error = new Error(message);
+            error.status = response.status;
+            throw error;
         }
 
         return payload;
@@ -402,6 +461,7 @@
         const session = await apiFetch("/api/session");
         state.authenticated = Boolean(session.authenticated);
         state.csrfToken = session.csrfToken || null;
+        state.privateView = Boolean(session.privateView);
         return session;
     }
 
@@ -415,6 +475,11 @@
         state.status = result.status || result || {};
     }
 
+    async function loadHistory() {
+        const result = await apiFetch("/api/history");
+        state.history = result.history || {};
+    }
+
     async function loadSecurity() {
         if (!state.authenticated) return;
         state.security = await apiFetch("/api/security");
@@ -424,6 +489,7 @@
         if (!state.authenticated) return;
         const result = await apiFetch("/api/backups");
         state.backups = result.backups || [];
+        state.backupRetention = result.retentionLimit || 100;
     }
 
     function normalizeConfig(config) {
@@ -442,6 +508,13 @@
                 item.url = item.url || "";
                 item.icon = item.icon || "🌍";
                 item.invertStatus = Boolean(item.invertStatus);
+                item.maintenance = Boolean(item.maintenance);
+                item.checkType = ["auto", "http", "tcp", "icmp"].includes(item.checkType) ? item.checkType : "auto";
+                item.checkPort = Number(item.checkPort || 0);
+                item.checkPath = item.checkPath || "";
+                item.expectedStatus = Number(item.expectedStatus || 0);
+                item.warnResponseMs = Number(item.warnResponseMs || 0);
+                item.tlsWarnDays = Number(item.tlsWarnDays ?? 30);
             });
         });
         return safe;
@@ -449,6 +522,27 @@
 
     function render() {
         elements.body.classList.toggle("edit-mode", state.editMode);
+        elements.statsGrid.classList.toggle("hidden", state.locked);
+        elements.controls.classList.toggle("hidden", state.locked);
+        elements.summaryNote.classList.toggle("hidden", state.locked);
+        if (state.locked) {
+            elements.modalOverlay.classList.add("hidden");
+            elements.modal.replaceChildren();
+            elements.editorToolbar.classList.add("hidden");
+            elements.editModeNotice.classList.add("hidden");
+            elements.editSidebar.classList.add("hidden");
+            elements.editPanels.classList.add("hidden");
+            elements.editModeButton.textContent = "🔒 Sign in";
+            elements.dashboard.replaceChildren();
+            const box = document.createElement("div");
+            box.className = "empty-state private-view-locked";
+            box.textContent = "This dashboard is private. Sign in to view services and status.";
+            box.appendChild(document.createElement("br"));
+            box.appendChild(createButton("🔓 Sign in", "button button-primary", () => openLoginModal(false)));
+            elements.dashboard.append(box);
+            elements.updatedAt.textContent = "Private dashboard";
+            return;
+        }
         elements.editorToolbar.classList.toggle("hidden", !state.editMode);
         elements.editModeNotice.classList.toggle("hidden", !state.editMode);
         elements.editSidebar.classList.toggle("hidden", !state.editMode);
@@ -477,34 +571,39 @@
         renderStats();
         renderDashboard();
         renderFooter();
-        if (state.editMode) {
-            renderEditPanels();
-        }
+        // Do not rebuild edit panels every 30 seconds: this would discard unsaved form input.
     }
+
+    function getItemDetail(item) {
+        const detail = state.status._details?.[item.id];
+        if (detail) {
+            const latest = Date.parse(state.status._meta?.checkedAt || detail.checkedAt || "");
+            if (Number.isFinite(latest) && Date.now() - latest > 5 * 60 * 1000) {
+                return { ...detail, state: "unknown", message: "Status data is stale; check the monitoring worker" };
+            }
+            return detail;
+        }
+        const raw = state.status[item.id];
+        if (typeof raw !== "boolean") return { state: "unknown", message: "Not checked yet" };
+        const online = item.invertStatus ? !raw : raw;
+        return { state: online ? "online" : "offline", message: "Legacy status check" };
+    }
+
+    function getItemState(item) { return getItemDetail(item).state || "unknown"; }
+    function getItemStatus(item) { return getItemState(item) === "online"; }
 
     function calculateStats() {
-        let total = 0;
-        let online = 0;
-        let offline = 0;
-
-        state.config.sections.forEach((section) => {
-            section.items.forEach((item) => {
-                total += 1;
-                if (getItemStatus(item)) online += 1;
-                else offline += 1;
-            });
-        });
-
-        const uptime = total > 0 ? Math.round((online / total) * 100) : 0;
-        return { total, online, offline, uptime };
-    }
-
-    function getItemStatus(item) {
-        let isOnline = state.status[item.id] === true;
-        if (item.invertStatus === true) {
-            isOnline = !isOnline;
-        }
-        return isOnline;
+        const totals = { total: 0, online: 0, offline: 0, warning: 0, unknown: 0, maintenance: 0 };
+        let samples = 0, up = 0;
+        state.config.sections.forEach(section => section.items.forEach(item => {
+            totals.total++;
+            const status = getItemState(item);
+            totals[status in totals ? status : "unknown"]++;
+            const history = state.history[item.id]?.["24h"];
+            if (history?.samples) { samples += history.samples; up += history.samples * history.uptime / 100; }
+        }));
+        totals.uptime = samples ? `${(up / samples * 100).toFixed(1)}%` : "—";
+        return totals;
     }
 
     function renderStats() {
@@ -512,11 +611,66 @@
         elements.servicesCount.textContent = stats.total;
         elements.onlineCount.textContent = stats.online;
         elements.offlineCount.textContent = stats.offline;
-        elements.uptimePercent.textContent = `${stats.uptime}%`;
+        elements.uptimePercent.textContent = stats.uptime;
+        elements.summaryNote.textContent = `Warning: ${stats.warning} · Unknown: ${stats.unknown} · Maintenance: ${stats.maintenance} · Uptime: last 24h of recorded checks`;
     }
 
     function renderFooter() {
-        elements.updatedAt.textContent = `Last updated: ${new Date().toLocaleString("en-GB")}`;
+        const checkedAt = state.status._meta?.checkedAt;
+        elements.updatedAt.textContent = checkedAt && !isNaN(Date.parse(checkedAt))
+            ? `Last check: ${new Date(checkedAt).toLocaleString()}` : "Waiting for first status check";
+    }
+
+    function favoriteButton(item) {
+        const selected = state.favorites.has(item.id);
+        const button = createIconButton(selected ? "★" : "☆", selected ? "Remove favorite" : "Add favorite", () => {
+            if (state.favorites.has(item.id)) state.favorites.delete(item.id);
+            else state.favorites.add(item.id);
+            localStorage.setItem("dashboard-favorites", JSON.stringify([...state.favorites]));
+            renderDashboard();
+        });
+        button.classList.add("favorite-button");
+        button.setAttribute("aria-pressed", String(selected));
+        return button;
+    }
+
+    function serviceMatches(item) {
+        if (state.search && ![item.name, item.description, item.url, item.id].some(text => String(text || "").toLowerCase().includes(state.search))) return false;
+        const status = getItemState(item);
+        if (state.filter === "favorites" && !state.favorites.has(item.id)) return false;
+        if (!["all", "favorites"].includes(state.filter) && status !== state.filter) return false;
+        return true;
+    }
+
+    function openHistoryModal(item) {
+        const info = state.history[item.id] || {};
+        const detail = getItemDetail(item);
+        const content = document.createElement("div");
+        content.className = "history-modal";
+        const heading = document.createElement("h2"); heading.textContent = `${item.name} · Health history`;
+        const subtitle = document.createElement("p"); subtitle.className = "muted";
+        subtitle.textContent = `Current: ${detail.state || "unknown"} · ${detail.message || "No details"}`;
+        content.append(heading, subtitle);
+        const table = document.createElement("div"); table.className = "history-periods";
+        for (const period of ["24h", "7d", "30d"]) {
+            const bucket = info[period];
+            const cell = document.createElement("div"); cell.className = "history-period";
+            cell.textContent = `${period}: ${bucket?.uptime == null ? "No data" : bucket.uptime.toFixed(2) + "%"} · ${bucket?.samples ?? 0} checks · ${bucket?.avgResponseMs == null ? "—" : bucket.avgResponseMs + "ms"}`;
+            table.append(cell);
+        }
+        content.append(table);
+        const bars = document.createElement("div"); bars.className = "uptime-bars"; bars.title = "Hourly availability (last 24 hours)";
+        const hourly = Array.isArray(info.hourly) ? info.hourly : [];
+        for (const hour of hourly) {
+            const segment = document.createElement("div");
+            segment.className = `uptime-bar uptime-bar-${hour.state || "unknown"}`;
+            segment.title = `${hour.hour}: ${hour.state || "unknown"} (${hour.uptime == null ? "—" : hour.uptime + "%"})`;
+            bars.append(segment);
+        }
+        if (hourly.length) content.append(bars);
+        const close = createButton("Close", "button button-secondary", closeModal);
+        content.append(close);
+        openModal(content);
     }
 
     function renderDashboard() {
@@ -532,6 +686,8 @@
         }
 
         state.config.sections.forEach((section, sectionIndex) => {
+            const visibleItems = section.items.map((item, itemIndex) => ({ item, itemIndex })).filter(({ item }) => serviceMatches(item));
+            if (!visibleItems.length && (state.search || state.filter !== "all") && !state.editMode) return;
             const sectionElement = document.createElement("section");
             sectionElement.className = "dashboard-section";
             sectionElement.dataset.sectionIndex = String(sectionIndex);
@@ -557,7 +713,7 @@
 
             const sectionKey = section.id || section.title || String(sectionIndex);
             if (!state.collapsedSections.has(sectionKey)) {
-                section.items.forEach((item, itemIndex) => {
+                visibleItems.forEach(({ item, itemIndex }) => {
                     grid.appendChild(createServiceCard(item, sectionIndex, itemIndex));
                 });
             } else {
@@ -568,6 +724,12 @@
             elements.dashboard.appendChild(sectionElement);
         });
 
+        if ((state.search || state.filter !== "all") && !elements.dashboard.querySelector(".dashboard-section")) {
+            const empty = document.createElement("div");
+            empty.className = "empty-state";
+            empty.textContent = "No services match these filters.";
+            elements.dashboard.append(empty);
+        }
         if (state.editMode) {
             elements.dashboard.appendChild(createAddSectionButton());
         }
@@ -624,14 +786,13 @@
     }
 
     function createServiceCard(item, sectionIndex, itemIndex) {
-        const isOnline = getItemStatus(item);
+        const detail = getItemDetail(item);
+        const statusName = detail.state || "unknown";
         const href = safeHref(item.url);
         const card = state.editMode ? document.createElement("article") : document.createElement("a");
-
-        card.className = `service-card ${isOnline ? "" : "offline-card"}`;
+        card.className = `service-card status-card-${statusName} ${statusName === "offline" ? "offline-card" : ""}`;
         card.dataset.sectionIndex = String(sectionIndex);
         card.dataset.itemIndex = String(itemIndex);
-
         if (!state.editMode) {
             card.href = href;
             card.target = "_blank";
@@ -639,63 +800,57 @@
         } else {
             card.addEventListener("dragover", handleHostCardDragOver);
             card.addEventListener("dragleave", handleDragLeave);
-            card.addEventListener("drop", (event) => handleHostCardDrop(event, sectionIndex, itemIndex));
-
+            card.addEventListener("drop", event => handleHostCardDrop(event, sectionIndex, itemIndex));
             const tools = document.createElement("div");
             tools.className = "card-top-tools";
-            tools.appendChild(createIconButton("✏", "Edit host", () => openHostModal(sectionIndex, itemIndex)));
-            tools.appendChild(createIconButton("🗑", "Delete host", () => confirmDeleteHost(sectionIndex, itemIndex), "button-danger"));
-            card.appendChild(tools);
-
+            tools.append(createIconButton("✏", "Edit host", () => openHostModal(sectionIndex, itemIndex)));
+            tools.append(createIconButton("🗑", "Delete host", () => confirmDeleteHost(sectionIndex, itemIndex), "button-danger"));
+            tools.append(favoriteButton(item));
+            tools.append(createIconButton("📈", "Health history", () => openHistoryModal(item)));
+            card.append(tools);
             const drag = document.createElement("span");
             drag.className = "drag-handle card-drag-handle";
             drag.textContent = "⋮⋮";
             drag.title = "Drag to reorder host";
             drag.draggable = true;
-            drag.addEventListener("dragstart", (event) => {
+            drag.addEventListener("dragstart", event => {
                 state.drag = { type: "host", fromSectionIndex: sectionIndex, fromItemIndex: itemIndex };
                 event.dataTransfer.effectAllowed = "move";
                 event.dataTransfer.setData("text/plain", JSON.stringify(state.drag));
             });
-            card.appendChild(drag);
+            card.append(drag);
         }
-
         const content = document.createElement("div");
-        const icon = document.createElement("div");
-        icon.className = "card-icon";
-        setIcon(icon, item.icon, "🌍");
-        content.appendChild(icon);
-
-        const title = document.createElement("h3");
-        title.className = "card-title";
-        title.textContent = item.name;
-        content.appendChild(title);
-
-        const description = document.createElement("div");
-        description.className = "card-description";
-        description.textContent = item.description || "";
-        content.appendChild(description);
-        card.appendChild(content);
-
-        const footer = document.createElement("div");
-        footer.className = "card-footer";
-
-        const status = document.createElement("div");
-        status.className = `status ${isOnline ? "status-online" : "status-offline"}`;
-        const dot = document.createElement("span");
-        dot.className = "status-dot";
-        const text = document.createElement("span");
-        text.textContent = isOnline ? "Online" : "Offline";
-        status.append(dot, text);
-        footer.appendChild(status);
-
-        const arrow = document.createElement("div");
-        arrow.className = "card-arrow";
-        arrow.textContent = "→";
-        footer.appendChild(arrow);
-
-        card.appendChild(footer);
-        return card;
+        const icon = document.createElement("div"); icon.className = "card-icon";
+        setIcon(icon, item.icon, "🌍"); content.append(icon);
+        const title = document.createElement("h3"); title.className = "card-title"; title.textContent = item.name;
+        content.append(title);
+        const description = document.createElement("div"); description.className = "card-description";
+        description.textContent = item.description || ""; content.append(description);
+        const metrics = document.createElement("div"); metrics.className = "service-metrics";
+        const pieces = [];
+        if (Number.isFinite(detail.responseMs)) pieces.push(`${detail.responseMs}ms`);
+        if (detail.tlsDaysRemaining !== undefined) pieces.push(`TLS ${detail.tlsDaysRemaining}d`);
+        const uptime = state.history[item.id]?.["24h"]?.uptime;
+        if (uptime != null) pieces.push(`${uptime.toFixed(1)}% /24h`);
+        metrics.textContent = pieces.join(" · ");
+        if (pieces.length) content.append(metrics);
+        card.append(content);
+        const footer = document.createElement("div"); footer.className = "card-footer";
+        const status = document.createElement("div"); status.className = `status status-${statusName}`;
+        status.title = `${detail.message || statusName}${detail.checkedAt ? " · " + new Date(detail.checkedAt).toLocaleString() : ""}`;
+        const dot = document.createElement("span"); dot.className = "status-dot";
+        const text = document.createElement("span"); text.textContent = statusName.charAt(0).toUpperCase() + statusName.slice(1);
+        status.append(dot, text); footer.append(status);
+        const arrow = document.createElement("div"); arrow.className = "card-arrow"; arrow.textContent = "→";
+        footer.append(arrow); card.append(footer);
+        if (state.editMode) return card;
+        const wrapper = document.createElement("div"); wrapper.className = "service-card-shell";
+        wrapper.append(card);
+        const actions = document.createElement("div"); actions.className = "service-card-actions";
+        actions.append(favoriteButton(item), createIconButton("📈", "Health history", () => openHistoryModal(item)));
+        wrapper.append(actions);
+        return wrapper;
     }
 
     function createAddSectionButton() {
@@ -722,6 +877,7 @@
         form.appendChild(createInputField("URL / IP", "newHostUrl", "e.g. https://example.local"));
         form.appendChild(createSelectField("Icon", "newHostIcon", iconOptions(ALL_ICONS, "🌍"), "🌍"));
         form.appendChild(mountIconPicker(form.querySelector("#newHostIcon"), () => updateHostPreview(form, preview)));
+        appendCheckFields(form, "newHost");
         form.appendChild(createCheckboxField("Invert status", "newHostInvert", false));
 
         const preview = document.createElement("div");
@@ -753,6 +909,37 @@
         panel.appendChild(form);
         updateHostPreview(form, preview);
         return panel;
+    }
+
+    function appendCheckFields(form, prefix, item = {}) {
+        const heading = document.createElement("h4"); heading.textContent = "Health check options";
+        form.append(heading);
+        const types = [
+            { value: "auto", label: "Auto (HTTP or ICMP)" },
+            { value: "http", label: "HTTP / HTTPS" },
+            { value: "tcp", label: "TCP port" },
+            { value: "icmp", label: "ICMP ping" }
+        ];
+        form.append(createSelectField("Check type", `${prefix}CheckType`, types, item.checkType || "auto"));
+        form.append(createInputField("TCP port (0 = automatic)", `${prefix}CheckPort`, "443", String(item.checkPort || 0), "number"));
+        form.append(createInputField("HTTP path (optional)", `${prefix}CheckPath`, "/health", item.checkPath || ""));
+        form.append(createInputField("Expected HTTP code (0 = 200–399)", `${prefix}ExpectedStatus`, "200", String(item.expectedStatus || 0), "number"));
+        form.append(createInputField("Slow response warning (ms; 0 = off)", `${prefix}WarnResponseMs`, "1500", String(item.warnResponseMs || 0), "number"));
+        form.append(createInputField("TLS expiry warning (days)", `${prefix}TlsWarnDays`, "30", String(item.tlsWarnDays ?? 30), "number"));
+        form.append(createCheckboxField("Maintenance mode (pause checks)", `${prefix}Maintenance`, Boolean(item.maintenance)));
+    }
+
+    function checkFieldData(form, prefix) {
+        const get = name => form.querySelector(`#${prefix}${name}`);
+        return {
+            checkType: get("CheckType")?.value || "auto",
+            checkPort: Number(get("CheckPort")?.value || 0),
+            checkPath: get("CheckPath")?.value.trim() || "",
+            expectedStatus: Number(get("ExpectedStatus")?.value || 0),
+            warnResponseMs: Number(get("WarnResponseMs")?.value || 0),
+            tlsWarnDays: Number(get("TlsWarnDays")?.value || 0),
+            maintenance: Boolean(get("Maintenance")?.checked)
+        };
     }
 
     function createQuickSectionPanel() {
@@ -862,7 +1049,7 @@
     function createBackupPanel() {
         const panel = createPanel("Backup (Auto)", "panel-medium");
         const info = document.createElement("p");
-        info.textContent = "Automatic backup is enabled. Every server-side save creates a backup first.";
+        info.textContent = `Backups are automatic before saves and restores. Up to ${state.backupRetention || 100} most recent backups are retained.`;
         panel.appendChild(info);
         const last = document.createElement("p");
         last.className = "green";
@@ -1016,6 +1203,7 @@
         form.appendChild(createInputField("Current Password", "currentPassword", "Current password", "", "password"));
         form.appendChild(createInputField("New Password", "newPassword", "Leave blank to keep current password", "", "password"));
         form.appendChild(createInputField("Confirm New Password", "confirmPassword", "Confirm new password", "", "password"));
+        form.appendChild(createCheckboxField("Private dashboard (require login to view services)", "privateView", Boolean(state.security?.privateView)));
         form.appendChild(createSelectField("Session timeout", "sessionTimeout", [
             { value: "10", label: "10 minutes" },
             { value: "30", label: "30 minutes" },
@@ -1206,7 +1394,7 @@
 
         await refreshSession();
         if (!state.authenticated) {
-            openLoginModal();
+            openLoginModal(true);
             return;
         }
 
@@ -1235,17 +1423,23 @@
         state.authenticated = false;
         state.csrfToken = null;
         state.editMode = false;
+        if (state.privateView) {
+            state.locked = true;
+            state.config = { sections: [] };
+            state.status = {};
+            state.history = {};
+        }
         notify("info", "Edit Mode Locked", "You have been logged out.");
         render();
     }
 
-    function openLoginModal() {
+    function openLoginModal(editAfter = true) {
         const content = document.createElement("div");
         content.innerHTML = `
             <div class="modal-header">
                 <div>
-                    <h2 class="modal-title">Unlock Edit Mode</h2>
-                    <p class="modal-subtitle">Enter the admin password to manage the dashboard.</p>
+                    <h2 class="modal-title">${editAfter ? "Unlock Edit Mode" : "Sign in"}</h2>
+                    <p class="modal-subtitle">Enter your admin password to access the dashboard.</p>
                 </div>
                 <button class="modal-close" type="button" aria-label="Close">×</button>
             </div>
@@ -1276,7 +1470,12 @@
                 state.authenticated = true;
                 state.csrfToken = result.csrfToken;
                 closeModal();
-                await enterEditMode();
+                if (state.locked) {
+                    state.locked = false;
+                    await Promise.all([loadConfig(), loadStatus(), loadHistory()]);
+                }
+                if (editAfter) await enterEditMode();
+                else render();
             } catch (error) {
                 notify("error", "Login failed", error.message);
             }
@@ -1319,6 +1518,7 @@
                             ${iconSelectOptions(ALL_ICONS, item.icon)}
                         </select>
                     </div>
+                    <div id="hostCheckFields"></div>
                     <label class="checkbox-row">
                         <input id="hostInvert" type="checkbox" ${item.invertStatus ? "checked" : ""}>
                         <span>Invert status (for checks that should be offline when reachable)</span>
@@ -1338,6 +1538,7 @@
         `;
         openModal(content);
         const form = content.querySelector("#editHostForm");
+        appendCheckFields(content.querySelector("#hostCheckFields"), "host", item);
         const preview = content.querySelector("#hostLivePreview");
         const iconSelect = content.querySelector("#hostIcon");
         content.querySelector("#hostIconGrid").appendChild(mountIconPicker(iconSelect, () => updateHostPreview(form, preview)));
@@ -1482,11 +1683,35 @@
             const meta = document.createElement("div");
             meta.innerHTML = `<strong>${escapeHtml(backup.name)}</strong><div class="backup-meta">${escapeHtml(formatBytes(backup.size))} · ${escapeHtml(formatBackupTime(backup.createdAt))}</div>`;
             row.appendChild(meta);
+            row.appendChild(createButton("Preview", "button button-secondary", () => previewBackup(backup.name)));
             row.appendChild(createButton("Download", "button button-secondary", () => downloadBackup(backup.name)));
             row.appendChild(createButton("Restore", "button button-success", () => confirmRestoreBackup(backup.name)));
             row.appendChild(createButton("Delete", "button button-danger", () => confirmDeleteBackup(backup.name)));
             list.appendChild(row);
         });
+    }
+
+    async function previewBackup(name) {
+        try {
+            const info = await apiFetch(`/api/backup/${encodeURIComponent(name)}/preview`);
+            openConfirmModal({
+                title: "Backup preview",
+                message: `Backup: ${info.backup.sections} sections / ${info.backup.services} services. Current: ${info.current.sections} sections / ${info.current.services} services. Restore this backup?`,
+                confirmText: "Restore backup",
+                danger: true,
+                onConfirm: () => restoreBackup(name)
+            });
+        } catch (error) { notify("error", "Backup preview failed", error.message); }
+    }
+
+    async function restoreBackup(name) {
+        try {
+            const result = await apiFetch("/api/restore", { method: "POST", body: { name } });
+            state.config = normalizeConfig(result.config);
+            await Promise.all([loadBackups(), loadStatus(), loadHistory()]);
+            notify("success", "Configuration restored", name);
+            render();
+        } catch (error) { notify("error", "Restore failed", error.message); }
     }
 
     function openModal(contentNode) {
@@ -1507,7 +1732,8 @@
             description: form.querySelector("#hostDescription, #newHostDescription")?.value.trim() || "",
             url: form.querySelector("#hostUrl, #newHostUrl")?.value.trim(),
             icon: form.querySelector("#hostIcon, #newHostIcon")?.value || "🌍",
-            invertStatus: Boolean(form.querySelector("#hostInvert, #newHostInvert")?.checked)
+            invertStatus: Boolean(form.querySelector("#hostInvert, #newHostInvert")?.checked),
+            ...checkFieldData(form, form.id === "editHostForm" ? "host" : "newHost")
         };
     }
 
@@ -1556,6 +1782,12 @@
         const existing = getAllHostIds().filter((id) => id !== originalId);
         if (existing.includes(host.id)) return "ID must be unique.";
         if (!isValidTarget(host.url)) return "URL / IP must be http(s), a hostname or an IP address.";
+        if (host.checkType === "http" && !/^https?:\/\//i.test(host.url)) return "HTTP checks require an http(s) URL.";
+        if (host.checkType === "tcp" && !host.checkPort && !/^https?:\/\//i.test(host.url)) return "Enter a TCP port for this host.";
+        for (const [key, max] of [["checkPort", 65535], ["expectedStatus", 599], ["warnResponseMs", 60000], ["tlsWarnDays", 365]]) {
+            if (!Number.isInteger(host[key]) || host[key] < 0 || host[key] > max) return `Invalid ${key}.`;
+        }
+        if (host.checkPath && (!host.checkPath.startsWith("/") || host.checkPath.length > 200)) return "HTTP path must start with /.";
         return null;
     }
 
@@ -1735,23 +1967,8 @@
     }
 
     function confirmRestoreBackup(name) {
-        openConfirmModal({
-            title: "Restore Backup",
-            message: `Restore ${name}? A backup of the current config will be created first.`,
-            confirmText: "Restore",
-            danger: true,
-            onConfirm: async () => {
-                try {
-                    const result = await apiFetch("/api/restore", { method: "POST", body: { name } });
-                    state.config = normalizeConfig(result.config);
-                    await loadBackups();
-                    notify("success", "Configuration restored", name);
-                    render();
-                } catch (error) {
-                    notify("error", "Restore failed", error.message);
-                }
-            }
-        });
+        // Preview validates the backup before allowing the restore.
+        previewBackup(name);
     }
 
     function confirmDeleteBackup(name) {
@@ -1778,6 +1995,7 @@
         const newPassword = form.querySelector("#newPassword").value;
         const confirmPassword = form.querySelector("#confirmPassword").value;
         const sessionTimeoutMinutes = Number(form.querySelector("#sessionTimeout").value);
+        const privateView = form.querySelector("#privateView").checked;
 
         if (newPassword && newPassword !== confirmPassword) {
             return notify("warning", "Password mismatch", "New password and confirmation do not match.");
@@ -1789,10 +2007,12 @@
         try {
             state.security = await apiFetch("/api/security", {
                 method: "POST",
-                body: { currentPassword, newPassword, sessionTimeoutMinutes }
+                body: { currentPassword, newPassword, sessionTimeoutMinutes, privateView }
             });
             form.reset();
             form.querySelector("#sessionTimeout").value = String(state.security.sessionTimeoutMinutes || 30);
+            form.querySelector("#privateView").checked = Boolean(state.security.privateView);
+            state.privateView = Boolean(state.security.privateView);
             notify("success", "Security saved", "Edit mode security settings were updated.");
         } catch (error) {
             notify("error", "Security update failed", error.message);

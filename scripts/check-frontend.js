@@ -1,37 +1,21 @@
-// Validate DOM IDs referenced by frontend event bindings to prevent blank dashboards.
+// Catch DOM-to-JavaScript mismatches and missing feature wiring before publishing.
 "use strict";
-const fs = require("fs");
-const path = require("path");
+const fs = require("node:fs");
+const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const js = fs.readFileSync(path.join(root, "site/app.js"), "utf8");
 const html = fs.readFileSync(path.join(root, "site/index.html"), "utf8");
-const found = new Set([...html.matchAll(/\bid=["']([^"']+)["']/g)].map(match => match[1]));
-const bindElements = js.match(/function bindElements\(\)\s*\{([\s\S]*?)\n    \}/)?.[1] || "";
-const missing = [...new Set([...bindElements.matchAll(/document\.getElementById\(["']([^"']+)["']\)/g)].map(match => match[1]))].filter(id => !found.has(id));
-if (missing.length) {
-    console.error("Missing DOM element IDs in index.html:", missing.join(", "));
-    process.exit(1);
-}
-console.log("Frontend DOM ID check passed.");
-
-// Dashboard Icons regression checks: picker references and CDN CSP.
 const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
-for (const token of ["mountIconPicker(", "iconSelectOptions(", "setIcon(icon, section.icon", "setIcon(icon, item.icon", "setIcon(preview.querySelector", "createIconNode(item.icon"]) {
-    if (!js.includes(token)) {
-        console.error("Dashboard Icons integration missing:", token);
-        process.exit(1);
-    }
+const worker = fs.readFileSync(path.join(root, "status-checker.js"), "utf8");
+const found = new Set([...html.matchAll(/\bid=["']([^"']+)["']/g)].map(x => x[1]));
+const binder = js.match(/function bindElements\(\)\s*\{([\s\S]*?)\n    \}/)?.[1] || "";
+const missing = [...new Set([...binder.matchAll(/document\.getElementById\(["']([^"']+)["']\)/g)].map(x => x[1]))].filter(id => !found.has(id));
+if (missing.length) throw Error(`Missing HTML elements referenced by bindElements(): ${missing.join(", ")}`);
+for (const token of ["mountIconPicker(", "iconSelectOptions(", "setIcon(icon, section.icon", "setIcon(icon, item.icon", "createIconNode(item.icon", "loadDashboardIconCatalog()", "DASHBOARD_ICON_INDEX_URL = \"/api/icon-catalog\"", "getItemDetail(", "loadHistory(", "openHistoryModal(", "appendCheckFields(", "favoriteButton("]) {
+    if (!js.includes(token)) throw Error(`Missing frontend integration: ${token}`);
 }
-if (!server.includes("img-src 'self' data: https://cdn.jsdelivr.net")) {
-    console.error("Dashboard Icons CDN is blocked by CSP");
-    process.exit(1);
+for (const token of ["serveDashboardIcon(", "/api/history", "/api/icon-catalog", "/api/health", "privateView", "BACKUP_MAX_FILES"]) {
+    if (!server.includes(token)) throw Error(`Missing server integration: ${token}`);
 }
-console.log("Dashboard Icons integration checks passed.");
-
-if (!js.includes("loadDashboardIconCatalog()") || !js.includes("tree.json")) {
-    throw new Error("Full Dashboard Icons catalog integration missing");
-}
-if (!server.includes("connect-src 'self' https://cdn.jsdelivr.net")) {
-    throw new Error("Dashboard Icons catalog fetch blocked by CSP");
-}
-console.log("Full Dashboard Icons catalog checks passed.");
+if (!worker.includes("updateHistory(")) throw Error("Status history worker is missing");
+console.log("Frontend DOM bindings, icons, status, history and privacy integration passed.");

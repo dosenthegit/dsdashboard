@@ -4,16 +4,25 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { historySummary } = require("./status-checker");
 
 const PORT = Number(process.env.PORT || 3000);
 const SITE_DIR = process.env.SITE_DIR || "/site";
 const DATA_DIR = process.env.DATA_DIR || "/data";
 const SAMPLE_DIR = path.join(__dirname, "defaults");
-const PUBLIC_DIR = path.join(__dirname, "public");
+const PUBLIC_DIR = process.env.PUBLIC_DIR || path.join(__dirname, "public");
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(SITE_DIR, "config.json");
 const STATUS_PATH = process.env.STATUS_PATH || path.join(SITE_DIR, "status.json");
 const BACKUP_DIR = process.env.BACKUP_DIR || path.join(DATA_DIR, "backups");
 const SECURITY_PATH = process.env.SECURITY_PATH || path.join(DATA_DIR, "security.json");
+const HISTORY_PATH = process.env.HISTORY_PATH || path.join(DATA_DIR, "status-history.json");
+const ICON_CACHE_DIR = path.join(DATA_DIR, "icon-cache");
+const ICON_INDEX_FILE = path.join(ICON_CACHE_DIR, "catalog.json");
+const BACKUP_MAX_FILES = clampNumber(Number(process.env.BACKUP_MAX_FILES || 100), 5, 1000);
+const DASHBOARD_ICON_ORIGIN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons@main";
+const ICON_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const ICON_FORMATS = new Set(["svg", "png", "webp"]);
+let iconCatalogInFlight = null;
 const COOKIE_SECURE = String(process.env.COOKIE_SECURE || "false").toLowerCase() === "true";
 const DEFAULT_TIMEOUT_MINUTES = clampNumber(Number(process.env.SESSION_TIMEOUT_MINUTES || 30), 10, 480);
 const MAX_JSON_BYTES = 1024 * 1024;
@@ -45,6 +54,10 @@ const server = http.createServer(async (req, res) => {
         const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
         const pathname = decodeURIComponent(parsedUrl.pathname);
 
+        if (pathname.startsWith("/icons/")) {
+            await serveDashboardIcon(req, res, pathname);
+            return;
+        }
         if (pathname.startsWith("/api/")) {
             await handleApi(req, res, pathname);
             return;
@@ -68,25 +81,31 @@ server.listen(PORT, () => {
 });
 
 async function handleApi(req, res, pathname) {
-    if (req.method === "GET" && pathname === "/api/config") {
-        sendJson(res, 200, { config: readJsonFile(CONFIG_PATH, { sections: [] }) });
+    if (req.method === "GET" && pathname === "/api/health") {
+        sendJson(res, 200, { healthy: true });
         return;
     }
-
-    if (req.method === "GET" && pathname === "/api/status") {
-        sendJson(res, 200, { status: readJsonFile(STATUS_PATH, {}) });
+    if (req.method === "GET" && ["/api/config", "/api/status", "/api/history"].includes(pathname)) {
+        if (loadSecurityConfig().privateView && !getSession(req)) {
+            sendJson(res, 401, { error: "Private dashboard: sign in to view services." });
+            return;
+        }
+        if (pathname === "/api/config") sendJson(res, 200, { config: readJsonFile(CONFIG_PATH, { sections: [] }) });
+        if (pathname === "/api/status") sendJson(res, 200, { status: readJsonFile(STATUS_PATH, {}) });
+        if (pathname === "/api/history") sendJson(res, 200, { history: historySummary(readJsonFile(HISTORY_PATH, { services: {} })) });
         return;
     }
 
     if (req.method === "GET" && pathname === "/api/session") {
         const session = getSession(req);
         if (!session) {
-            sendJson(res, 200, { authenticated: false });
+            sendJson(res, 200, { authenticated: false, privateView: loadSecurityConfig().privateView });
             return;
         }
         sendJson(res, 200, {
             authenticated: true,
             csrfToken: session.csrfToken,
+            privateView: loadSecurityConfig().privateView,
             expiresAt: new Date(session.expiresAt).toISOString()
         });
         return;
@@ -108,10 +127,18 @@ async function handleApi(req, res, pathname) {
     const session = requireAuth(req, res);
     if (!session) return;
 
+    if (req.method === "GET" && pathname === "/api/icon-catalog") {
+        const catalog = await getIconCatalog();
+        sendJson(res, 200, catalog);
+        return;
+    }
+
     if (req.method === "GET" && pathname === "/api/security") {
         const security = loadSecurityConfig();
         sendJson(res, 200, {
             requirePassword: true,
+            privateView: Boolean(security.privateView),
+            backupMaxFiles: BACKUP_MAX_FILES,
             sessionTimeoutMinutes: security.sessionTimeoutMinutes,
             passwordManaged: true
         });
@@ -125,7 +152,7 @@ async function handleApi(req, res, pathname) {
     }
 
     if (req.method === "GET" && pathname === "/api/backups") {
-        sendJson(res, 200, { backups: listBackups() });
+        sendJson(res, 200, { backups: listBackups(), retentionLimit: BACKUP_MAX_FILES });
         return;
     }
 
@@ -159,6 +186,17 @@ async function handleApi(req, res, pathname) {
         createBackup();
         writeJsonAtomic(CONFIG_PATH, config, 0o644);
         sendJson(res, 200, { success: true, config });
+        return;
+    }
+
+    const previewMatch = pathname.match(/^\/api\/backup\/([^/]+)\/preview$/);
+    if (req.method === "GET" && previewMatch) {
+        const backup = backupPath(previewMatch[1]);
+        if (!backup || !fs.existsSync(backup)) { sendJson(res, 404, { error: "Backup not found" }); return; }
+        const saved = sanitizeConfig(readJsonFile(backup, null));
+        const current = sanitizeConfig(readJsonFile(CONFIG_PATH, { sections: [] }));
+        const summarize = config => ({ sections: config.sections.length, services: config.sections.reduce((sum, sec) => sum + sec.items.length, 0) });
+        sendJson(res, 200, { backup: summarize(saved), current: summarize(current), valid: true });
         return;
     }
 
@@ -230,6 +268,10 @@ async function handleSecurityUpdate(req, res) {
     const currentPassword = String(body.currentPassword || "");
     const newPassword = String(body.newPassword || "");
     const timeout = clampNumber(Number(body.sessionTimeoutMinutes || security.sessionTimeoutMinutes || DEFAULT_TIMEOUT_MINUTES), 10, 480);
+    if (body.privateView !== undefined && typeof body.privateView !== "boolean") {
+        sendJson(res, 400, { error: "privateView must be a boolean" });
+        return;
+    }
 
     if (newPassword) {
         if (newPassword.length < 10 || newPassword.length > 200) {
@@ -243,11 +285,14 @@ async function handleSecurityUpdate(req, res) {
         security.password = hashPassword(newPassword);
     }
 
+    security.privateView = body.privateView === undefined ? Boolean(security.privateView) : body.privateView;
     security.sessionTimeoutMinutes = timeout;
     security.updatedAt = new Date().toISOString();
     writeJsonAtomic(SECURITY_PATH, security, 0o600);
     sendJson(res, 200, {
         requirePassword: true,
+        privateView: security.privateView,
+        backupMaxFiles: BACKUP_MAX_FILES,
         sessionTimeoutMinutes: timeout,
         passwordManaged: true
     });
@@ -301,6 +346,7 @@ function ensureStartupFiles() {
     fs.mkdirSync(SITE_DIR, { recursive: true });
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    fs.mkdirSync(ICON_CACHE_DIR, { recursive: true });
 
     if (!fs.existsSync(CONFIG_PATH)) {
         console.log("Initializing missing runtime configuration...");
@@ -329,6 +375,7 @@ function ensureStartupFiles() {
         const security = {
             password: hashPassword(initialPassword),
             sessionTimeoutMinutes: DEFAULT_TIMEOUT_MINUTES,
+            privateView: String(process.env.DASHBOARD_PRIVATE_VIEW || "false").toLowerCase() === "true",
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -342,6 +389,7 @@ function loadSecurityConfig() {
         throw new Error("Security configuration is invalid");
     }
     security.sessionTimeoutMinutes = clampNumber(Number(security.sessionTimeoutMinutes || DEFAULT_TIMEOUT_MINUTES), 10, 480);
+    security.privateView = Boolean(security.privateView);
     return security;
 }
 
@@ -403,7 +451,14 @@ function sanitizeConfig(config) {
                 description,
                 url,
                 icon: cleanIcon(item.icon, "🌍"),
-                invertStatus: Boolean(item.invertStatus)
+                invertStatus: Boolean(item.invertStatus),
+                maintenance: Boolean(item.maintenance),
+                checkType: ["auto", "http", "tcp", "icmp"].includes(item.checkType) ? item.checkType : "auto",
+                checkPort: cleanInteger(item.checkPort, 0, 65535, "checkPort"),
+                checkPath: cleanCheckPath(item.checkPath),
+                expectedStatus: cleanInteger(item.expectedStatus, 0, 599, "expectedStatus"),
+                warnResponseMs: cleanInteger(item.warnResponseMs, 0, 60000, "warnResponseMs"),
+                tlsWarnDays: cleanInteger(item.tlsWarnDays ?? 30, 0, 365, "tlsWarnDays")
             };
         });
 
@@ -411,6 +466,20 @@ function sanitizeConfig(config) {
     });
 
     return { sections: sanitizedSections };
+}
+
+function cleanInteger(value, min, max, field) {
+    if (value === undefined || value === null || value === "") return min;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < min || parsed > max) throw httpError(400, `Invalid ${field}`);
+    return parsed;
+}
+
+function cleanCheckPath(value) {
+    if (!value) return "";
+    const text = String(value).trim();
+    if (!text.startsWith("/") || text.length > 200 || /[\u0000-\u001f<>"']/u.test(text)) throw httpError(400, "Invalid HTTP check path");
+    return text;
 }
 
 function cleanString(value, min, max, field) {
@@ -436,7 +505,10 @@ function cleanOptionalId(value) {
 
 function cleanIcon(value, fallback) {
     const text = String(value || fallback).trim();
-    if (!text || text.length > 16 || /[\u0000-\u001f\u007f]/.test(text)) return fallback;
+    if (!text || /[\u0000-\u001f\u007f]/.test(text)) return fallback;
+    // Dashboard Icons slugs are often longer than 16 characters.
+    if (/^di:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(text) && text.length <= 96) return text;
+    if (text.length > 16) return fallback;
     return text;
 }
 
@@ -458,10 +530,19 @@ function createBackup() {
     if (!fs.existsSync(CONFIG_PATH)) {
         return { name: null, createdAt: null, size: 0 };
     }
-    const name = `config-${formatDateForFile(new Date())}.json`;
+    let date = new Date();
+    let name = `config-${formatDateForFile(date)}.json`;
+    while (fs.existsSync(path.join(BACKUP_DIR, name))) {
+        date = new Date(date.getTime() + 1);
+        name = `config-${formatDateForFile(date)}.json`;
+    }
     const target = path.join(BACKUP_DIR, name);
     fs.copyFileSync(CONFIG_PATH, target);
     const stat = fs.statSync(target);
+    const backups = listBackups();
+    for (const expired of backups.slice(BACKUP_MAX_FILES)) {
+        fs.unlinkSync(path.join(BACKUP_DIR, expired.name));
+    }
     return { name, createdAt: stat.mtime.toISOString(), size: stat.size };
 }
 
@@ -628,6 +709,75 @@ function getClientIp(req) {
     return req.socket.remoteAddress || "unknown";
 }
 
+async function getIconCatalog() {
+    const cached = readJsonFile(ICON_INDEX_FILE, null);
+    const valid = cached && Array.isArray(cached.icons) && cached.icons.length > 100;
+    const fresh = valid && Number(cached.fetchedAt || 0) > Date.now() - 24 * 3600000;
+    if (fresh) return { icons: cached.icons, formats: cached.formats || {}, cached: true };
+    if (iconCatalogInFlight) return iconCatalogInFlight;
+    iconCatalogInFlight = (async () => {
+        try {
+            const response = await fetch(`${DASHBOARD_ICON_ORIGIN}/tree.json`, { signal: AbortSignal.timeout(12000) });
+            if (!response.ok) throw new Error(`Catalog ${response.status}`);
+            const data = await response.json();
+            const formats = {};
+            for (const format of ["png", "webp", "svg"]) {
+                if (!Array.isArray(data[format])) continue;
+                for (const name of data[format]) {
+                    if (typeof name !== "string" || !name.endsWith(`.${format}`)) continue;
+                    const slug = name.slice(0, -(format.length + 1));
+                    if (ICON_SLUG_PATTERN.test(slug)) formats[slug] = format;
+                }
+            }
+            const icons = Object.keys(formats).sort();
+            if (icons.length < 100) throw new Error("Incomplete icon index");
+            writeJsonAtomic(ICON_INDEX_FILE, { icons, formats, fetchedAt: Date.now() }, 0o600);
+            return { icons, formats, cached: false };
+        } catch (error) {
+            if (valid) return { icons: cached.icons, formats: cached.formats || {}, cached: true, stale: true };
+            return { icons: [], formats: {}, cached: false, unavailable: true };
+        }
+    })();
+    try { return await iconCatalogInFlight; } finally { iconCatalogInFlight = null; }
+}
+
+async function serveDashboardIcon(req, res, pathname) {
+    if (!["GET", "HEAD"].includes(req.method)) return sendJson(res, 405, { error: "Method not allowed" });
+    const match = /^\/icons\/([a-z0-9]+(?:-[a-z0-9]+)*)\.(svg|png|webp)$/.exec(pathname);
+    if (!match || !ICON_SLUG_PATTERN.test(match[1]) || !ICON_FORMATS.has(match[2])) return sendJson(res, 404, { error: "Icon not found" });
+    const [, slug, format] = match;
+    const cachedPath = path.join(ICON_CACHE_DIR, `${slug}.${format}`);
+    let bytes;
+    try {
+        if (fs.existsSync(cachedPath)) bytes = fs.readFileSync(cachedPath);
+        else {
+            const response = await fetch(`${DASHBOARD_ICON_ORIGIN}/${format}/${slug}.${format}`, { signal: AbortSignal.timeout(10000) });
+            if (!response.ok) return sendJson(res, 404, { error: "Icon not available" });
+            const contentLength = Number(response.headers.get("content-length") || 0);
+            if (contentLength > 512 * 1024) throw new Error("Icon too large");
+            const body = await response.arrayBuffer();
+            if (body.byteLength > 512 * 1024) throw new Error("Icon too large");
+            bytes = Buffer.from(body);
+            fs.writeFileSync(cachedPath, bytes, { flag: "wx", mode: 0o600 });
+            // Keep only 800 cached icon files; remove oldest when over the limit.
+            const files = fs.readdirSync(ICON_CACHE_DIR).filter(n => /\.(svg|png|webp)$/.test(n));
+            if (files.length > 800) {
+                const stale = files.map(n => ({ n, mtime: fs.statSync(path.join(ICON_CACHE_DIR, n)).mtimeMs })).sort((a, b) => a.mtime - b.mtime);
+                for (const file of stale.slice(0, files.length - 800)) fs.unlinkSync(path.join(ICON_CACHE_DIR, file.n));
+            }
+        }
+    } catch (error) {
+        if (error.code === "EEXIST") bytes = fs.readFileSync(cachedPath);
+        else return sendJson(res, 502, { error: "Icon unavailable" });
+    }
+    res.setHeader("Content-Type", MIME_TYPES.get(`.${format}`));
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    // SVG is image-only, and must never run scripts even when navigated to directly.
+    if (format === "svg") res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    res.writeHead(200);
+    res.end(req.method === "HEAD" ? undefined : bytes);
+}
+
 function setSecurityHeaders(res) {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
@@ -637,10 +787,10 @@ function setSecurityHeaders(res) {
     res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
     res.setHeader("Content-Security-Policy", [
         "default-src 'self'",
-        "img-src 'self' data: https://cdn.jsdelivr.net",
+        "img-src 'self' data:",
         "style-src 'self' 'unsafe-inline'",
         "script-src 'self'",
-        "connect-src 'self' https://cdn.jsdelivr.net",
+        "connect-src 'self'",
         "form-action 'self' https://www.google.com",
         "object-src 'none'",
         "base-uri 'none'",

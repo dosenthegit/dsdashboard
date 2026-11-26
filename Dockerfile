@@ -12,7 +12,7 @@ ENV TZ=Europe/Stockholm
 ENV NODE_ENV=production
 
 WORKDIR /app
-COPY server.js package.json start.sh check-services.sh ./
+COPY server.js status-checker.js package.json start.sh check-services.sh ./
 RUN chmod +x /app/start.sh /app/check-services.sh \
     && mkdir -p /site /data/backups /app/public /app/defaults
 COPY site/index.html site/app.js site/style.css /app/public/

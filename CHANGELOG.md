@@ -1,3 +1,16 @@
+## 4.0.0 — Integrated 3.1 + 3.2 + 3.3
+
+- Local service search (`Ctrl+K`), favorites, status filters, compact/large layouts and optional hidden status labels.
+- Online/Warning/Offline/Unknown/Maintenance states and freshness indicators.
+- HTTP expected-status and health-path checks, TCP/ICMP probes, slow response warnings and HTTPS certificate expiry warnings.
+- Persistent, bounded hourly health history with 24h/7d/30d uptime and response-time summaries.
+- Optional password-protected dashboard viewing (`privateView`), while keeping the edit password/session flow.
+- Icon index and on-demand image caching under `/data/icon-cache`; support for longer `di:` icon slugs.
+- Config backup preview, auto-retention and pre-restore backup.
+- Node.js backend tests, offline Chromium UI tests and real-server Chromium smoke gate before Docker publication.
+- Docker healthcheck moved to public `/api/health` so private viewing does not mark the container unhealthy.
+- Backward-compatible with existing sections, services, emoji and Dashboard Icons config values.
+
 ## Dashboard Icons catalog update (2026-11-26)
 
 - Icon search loads the complete native Dashboard Icons file index instead of only a small hard-coded list.
