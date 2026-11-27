@@ -1158,7 +1158,7 @@ textarea {
 .service-card-shell .service-card { padding-right: 90px; }
 .service-card-actions .icon-button, .card-top-tools .icon-button { width: 30px; height: 30px; font-size: 15px; }
 .favorite-button[aria-pressed="true"] { color: var(--amber); background: rgba(251,191,36,.10); }
-.service-metrics { margin-top: 10px; font-size: 11px; line-height: 1.4; color: var(--muted); }
+.service-metrics { margin-top: 12px; font-size: 13px; line-height: 1.5; font-weight: 500; color: var(--muted-strong); }
 .status-warning { color: var(--amber); }
 .status-warning .status-dot { background: var(--amber); box-shadow: 0 0 8px rgba(251,191,36,.5); }
 .status-unknown { color: var(--muted); }
