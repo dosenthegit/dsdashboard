@@ -1158,7 +1158,7 @@ textarea {
 .service-card-shell .service-card { padding-right: 90px; }
 .service-card-actions .icon-button, .card-top-tools .icon-button { width: 30px; height: 30px; font-size: 15px; }
 .favorite-button[aria-pressed="true"] { color: var(--amber); background: rgba(251,191,36,.10); }
-.service-metrics { margin-top: 12px; font-size: 13px; line-height: 1.5; font-weight: 500; color: var(--muted-strong); }
+.service-metrics { margin-top: 10px; font-size: 11px; line-height: 1.4; color: var(--muted); }
 .status-warning { color: var(--amber); }
 .status-warning .status-dot { background: var(--amber); box-shadow: 0 0 8px rgba(251,191,36,.5); }
 .status-unknown { color: var(--muted); }
@@ -1200,4 +1200,52 @@ body.layout-large .card-icon { font-size: 48px; }
     .summary-note { padding: 0 16px 12px; }
     body.layout-large .services-grid, body.layout-compact .services-grid { grid-template-columns: 1fr; }
     .service-card-actions { opacity: 1; }
+}
+
+/* Bookmark drag-and-drop: external links are accepted only in authenticated Edit Mode. */
+.bookmark-drop-zone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+    background: rgba(96, 165, 250, 0.035);
+    color: var(--muted-strong);
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: center;
+    pointer-events: none;
+    user-select: none;
+}
+.dashboard-section.bookmark-drop-active {
+    border-color: var(--blue) !important;
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+.dashboard-section.bookmark-drop-active .bookmark-drop-zone {
+    border-color: var(--blue);
+    background: rgba(96, 165, 250, 0.12);
+    color: var(--text);
+}
+.bookmark-import-modal .modal-grid { align-items: start; }
+.bookmark-import-aside h3 { margin: 0 0 10px; font-size: 14px; }
+.bookmark-import-aside h3:not(:first-child) { margin-top: 18px; }
+.bookmark-duplicate-warning {
+    margin: 12px 0 6px;
+    padding: 10px 12px;
+    color: var(--amber);
+    background: rgba(251, 191, 36, 0.09);
+    border: 1px solid rgba(251, 191, 36, 0.25);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+}
+.bookmark-duplicate-choice { margin-bottom: 12px; }
+.bookmark-advanced { margin: 12px 0 18px; }
+.bookmark-advanced summary { color: var(--muted-strong); cursor: pointer; margin-bottom: 12px; }
+.bookmark-advanced[open] { padding-top: 8px; border-top: 1px solid var(--border); }
+.bookmark-import-modal [hidden] { display: none !important; }
+@media (max-width: 760px) {
+    .bookmark-drop-zone { font-size: 12px; padding: 9px; }
 }

@@ -128,6 +128,22 @@ async function main() {
         await cdp.call("Page.reload", { ignoreCache: true });
         await waitUntil(async () => cdp.eval(`document.querySelector('#servicesCount')?.textContent === '3' && document.querySelectorAll('.service-card').length === 3`), "reload after saved edit");
         console.log("✓ Login, edit form, icons, save and reload");
+        await cdp.eval(`document.querySelector('#editModeButton').click()`);
+        await waitUntil(async () => cdp.eval(`document.body.classList.contains('edit-mode')`), "edit mode after reload");
+        await cdp.eval(String.raw`(() => {
+            const transfer = new DataTransfer();
+            transfer.setData('text/uri-list', 'https://docs.example.net/dashboard');
+            transfer.setData('text/html', '<a href="https://docs.example.net/dashboard">Docs Portal</a>');
+            document.querySelector('.dashboard-section').dispatchEvent(new DragEvent('drop', { bubbles:true, cancelable:true, dataTransfer:transfer }));
+        })()`);
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkHostName')?.value`), "Docs Portal");
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkHostUrl')?.value`), "https://docs.example.net/dashboard");
+        assert.equal(await cdp.eval(`fetch('/api/config').then(r=>r.json()).then(v=>v.config.sections[0].items.length)`), 3, "Drop must not save without confirmation");
+        await cdp.eval(`document.querySelector('#bookmarkHostForm').requestSubmit()`);
+        await waitUntil(async () => cdp.eval(`document.querySelector('#servicesCount')?.textContent === '4' && document.querySelector('#modalOverlay').classList.contains('hidden')`), "bookmark saved in real server");
+        await cdp.call("Page.reload", { ignoreCache: true });
+        await waitUntil(async () => cdp.eval(`document.querySelector('#servicesCount')?.textContent === '4' && [...document.querySelectorAll('.card-title')].some(el=>el.textContent==='Docs Portal')`), "bookmark still present after reload");
+        console.log("✓ Bookmark drag/drop, explicit confirmation, save and reload");
         const response = await cdp.eval(`(async () => {
             const sess = await fetch('/api/session').then(r => r.json());
             const res = await fetch('/api/security', {method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':sess.csrfToken},body: JSON.stringify({privateView:true})});
@@ -142,7 +158,7 @@ async function main() {
         await cdp.eval(`document.querySelector('.private-view-locked button').click()`);
         await waitUntil(async () => cdp.eval(`!!document.querySelector('#loginForm')`), "private view login form");
         await cdp.eval(`document.querySelector('#adminPassword').value='integration-test-password-12345'; document.querySelector('#loginForm').requestSubmit()`);
-        await waitUntil(async () => cdp.eval(`document.querySelectorAll('.service-card').length === 3 && !document.body.classList.contains('edit-mode')`), "private view unlock");
+        await waitUntil(async () => cdp.eval(`document.querySelectorAll('.service-card').length === 4 && !document.body.classList.contains('edit-mode')`), "private view unlock");
         console.log("✓ Private view, logout, reload, unlock to view-only");
         assert.deepEqual(cdp.exceptions, [], "Browser JavaScript exceptions detected: " + cdp.exceptions.join("\n"));
         console.log("✓ No uncaught browser exceptions");

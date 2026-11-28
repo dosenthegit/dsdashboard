@@ -22,3 +22,10 @@
 7. Monitor `docker logs dsdashboard`, and test `/api/health` for container health.
 
 Note: in 4.0.0 HTTP 4xx/5xx now report Offline by default. For health endpoints requiring authentication, use an expected HTTP code (for example `401`) or a separate TCP check. Existing dashboard entries are otherwise compatible, but status semantics deliberately changed.
+
+## Upgrading from 4.0.0 to 4.1.0
+
+- All V4 configuration files, persistent volume paths, user accounts, Dashboard Icons values and status data remain compatible.
+- In **Edit Mode**, drag a bookmark or HTTP(S) link from the browser into a service section to open **Add Bookmark**. Saving is manual and uses existing CSRF-protected config persistence.
+- No environment variables, extra packages or migrations are required. Existing internal drag-and-drop to reorder cards and sections is unchanged.
+- Back up `/site` and `/data` before upgrading and test the new image in a separate stack first.

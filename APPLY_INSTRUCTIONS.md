@@ -1,6 +1,6 @@
-# DSdashboard 4.0 – installation and upgrade guide
+# DSdashboard 4.1 – installation and upgrade guide
 
-This archive contains the **complete** updated DSdashboard source tree (versions 3.1, 3.2 and 3.3 combined), including frontend, Node backend, tests and GitHub Actions workflow.
+This archive contains the **complete** updated DSdashboard 4.1.0 source tree (all V4 features retained, plus bookmark drag-and-drop), including frontend, Node backend, tests and GitHub Actions workflow.
 
 ## Publishing to your existing GitHub repository
 
@@ -40,3 +40,14 @@ npm run test:browser
 ```
 
 An administrator policy in some Chromium installations blocks local HTTP addresses, preventing the *real-server* browser test locally. The GitHub Actions workflow runs this test in a clean Ubuntu runner before it publishes images.
+
+## Test bookmark drag-and-drop before deploying
+
+1. Build a local image from the extracted project: `docker build -t dsdashboard:v4.1-test .`
+2. Deploy to a **separate** test stack / port with separate `/site` and `/data` volumes. When using Dockhand, select the Docker environment where you built the image and set `pull_policy: never`.
+3. Sign into **Edit Mode**, then drag one browser bookmark into a section's dashed drop area.
+4. Verify name/URL/section, press **Add Bookmark**, and refresh the browser to confirm it persists.
+5. Try dropping the same URL again: the duplicate warning should require confirmation.
+6. Verify internal host and section reordering still works.
+
+The feature uses the existing `/api/save-config` endpoint and does not add new persistent fields. The browser's format for dragged bookmarks varies; dragging a single ordinary web link should work in browsers supporting HTML drag-and-drop.

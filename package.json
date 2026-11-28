@@ -1,6 +1,6 @@
 {
   "name": "dashboard-production-final",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "private": true,
   "description": "Self-hosted service dashboard with live health checks, history, icons, backups and optional private view",
   "scripts": {

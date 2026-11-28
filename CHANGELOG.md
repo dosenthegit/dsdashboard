@@ -1,3 +1,13 @@
+## 4.1.0 — Browser bookmark drag-and-drop (2026-11-28)
+
+- Add one external bookmark, address-bar URL or webpage hyperlink by dropping it into an existing section in authenticated Edit Mode.
+- Supports common Chrome/Edge `text/uri-list` + `text/html` and Firefox `text/x-moz-url` drag data, plus plain-text HTTP(S) links.
+- Show a review modal with editable name, URL, icon and section, plus advanced ID/health options; do not auto-save on drop.
+- Flag URL duplicates and require explicit permission to save them anyway.
+- Validate HTTP(S) URLs, reject embedded credentials, and preserve server-side input validation and CSRF protections.
+- Keep internal host/section reorder behavior and existing config schema unchanged.
+- Extend offline Chromium regression tests to cover link formats, duplicate confirmation, invalid links, specific sections, and internal drag-and-drop.
+
 ## 4.0.0 — Integrated 3.1 + 3.2 + 3.3
 
 - Local service search (`Ctrl+K`), favorites, status filters, compact/large layouts and optional hidden status labels.

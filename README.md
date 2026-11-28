@@ -14,7 +14,20 @@ A lightweight, self-hosted service dashboard with service search, favorites, Das
 - **3.3 · Security:** optional password-protected **viewing** (in addition to protected editing), session cookies, CSRF protection, rate limiting and scrypt password hashes
 - **3.3 · Reliability:** configuration backups before saves/restores, retention (default last 100), validation and a preview before restoring
 - **3.3 · CI:** Node API/status-check tests and a headless Chrome integration test run **before** publishing the Docker image
-- **Existing functionality retained:** drag and drop, import/export, dark/light themes, colored sections, multiple host cards and status graphs
+- **4.1 · Browser bookmark drag-and-drop:** in Edit Mode, drop an HTTP(S) bookmark, address-bar URL or web link into any section; review its title, URL, icon and destination before saving, with duplicate detection
+- **Existing functionality retained:** internal host/section drag-and-drop sorting, import/export, dark/light themes, colored sections, multiple host cards and status graphs
+
+## Add browser bookmarks by drag-and-drop (4.1)
+
+1. Open **Edit Mode** and sign in as an administrator.
+2. Drag a bookmark from your browser bookmark bar (or a website link/address-bar URL) over the section where you want it.
+3. Drop it anywhere inside the section. A dashed drop area appears at the bottom of every section in Edit Mode.
+4. Confirm or adjust the **name, URL, destination section and icon** in the **Add Bookmark** dialog. Advanced options are available for the unique ID and health checks.
+5. Press **Add Bookmark** to save. Duplicate URLs are flagged and require explicit confirmation before saving.
+
+The link is **never saved on drop alone**. Browser drag data supplies the initial title where available; otherwise DSdashboard uses the hostname. Recognized services may receive a suggested Dashboard Icon, which you can change. The feature accepts a single `http://` or `https://` URL without embedded credentials and does not fetch metadata from the destination. It does **not** import a browser bookmark folder or an exported bookmarks HTML file. Support for dragging from bookmark bars may vary with browser and operating system; the existing **Add Host** form remains available as an alternative.
+
+This feature does not alter the configuration format, Docker volumes, API or health-check behavior. Existing emoji/Dashboard Icons values and internal drag-and-drop sorting continue to work. Test locally before publishing a new image.
 
 ## Requirements
 

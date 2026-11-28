@@ -407,6 +407,12 @@
             }
         });
 
+        // Clear internal drag state even if a dragged host/section is released outside a drop target.
+        document.addEventListener("dragend", () => {
+            state.drag = null;
+            clearDropHighlights();
+        });
+
         elements.restoreFileInput.addEventListener("change", async (event) => {
             const file = event.target.files?.[0];
             event.target.value = "";
@@ -721,6 +727,13 @@
             }
 
             sectionElement.appendChild(grid);
+            if (state.editMode) {
+                const dropZone = document.createElement("div");
+                dropZone.className = "bookmark-drop-zone";
+                dropZone.setAttribute("aria-hidden", "true");
+                dropZone.textContent = "↘ Drop a browser bookmark or web link here";
+                sectionElement.appendChild(dropZone);
+            }
             elements.dashboard.appendChild(sectionElement);
         });
 
@@ -1727,13 +1740,13 @@
 
     function readHostForm(form) {
         return {
-            id: form.querySelector("#hostId, #newHostId")?.value.trim(),
-            name: form.querySelector("#hostName, #newHostName")?.value.trim(),
-            description: form.querySelector("#hostDescription, #newHostDescription")?.value.trim() || "",
-            url: form.querySelector("#hostUrl, #newHostUrl")?.value.trim(),
-            icon: form.querySelector("#hostIcon, #newHostIcon")?.value || "🌍",
-            invertStatus: Boolean(form.querySelector("#hostInvert, #newHostInvert")?.checked),
-            ...checkFieldData(form, form.id === "editHostForm" ? "host" : "newHost")
+            id: form.querySelector("#hostId, #newHostId, #bookmarkHostId")?.value.trim(),
+            name: form.querySelector("#hostName, #newHostName, #bookmarkHostName")?.value.trim(),
+            description: form.querySelector("#hostDescription, #newHostDescription, #bookmarkHostDescription")?.value.trim() || "",
+            url: form.querySelector("#hostUrl, #newHostUrl, #bookmarkHostUrl")?.value.trim(),
+            icon: form.querySelector("#hostIcon, #newHostIcon, #bookmarkHostIcon")?.value || "🌍",
+            invertStatus: Boolean(form.querySelector("#hostInvert, #newHostInvert, #bookmarkHostInvert")?.checked),
+            ...checkFieldData(form, form.id === "editHostForm" ? "host" : form.id === "bookmarkHostForm" ? "bookmarkHost" : "newHost")
         };
     }
 
@@ -1802,10 +1815,12 @@
             await loadBackups();
             notify("success", "Success", successMessage || "Configuration saved successfully.");
             render();
+            return true;
         } catch (error) {
             state.config = previous;
             render();
             notify("error", "Failed to save", error.message);
+            return false;
         }
     }
 
@@ -1858,24 +1873,235 @@
         document.getElementById("newHostName")?.focus();
     }
 
+    // Bookmarks from Chrome/Edge typically provide text/uri-list and text/html;
+    // Firefox can also provide text/x-moz-url (URL followed by the title).
+    // Only inspect the payload in a drop handler: browsers block getData during dragover.
+    function isExternalBookmarkDrag(event) {
+        if (state.drag || !event.dataTransfer) return false;
+        const types = Array.from(event.dataTransfer.types || []);
+        if (types.includes("Files")) return false;
+        return ["text/uri-list", "text/x-moz-url", "text/plain", "text/html"].some(type => types.includes(type));
+    }
+
+    function normalizedBookmarkUrl(raw) {
+        if (typeof raw !== "string") return null;
+        const value = raw.trim();
+        if (!value || value.length > 300 || /[\u0000-\u001f\u007f<>"']/.test(value)) return null;
+        try {
+            const url = new URL(value);
+            if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+            return url.href;
+        } catch (_) { return null; }
+    }
+
+    function bookmarkFromDrop(dataTransfer) {
+        if (!dataTransfer) return null;
+        const get = type => {
+            try { return String(dataTransfer.getData(type) || "").slice(0, 8192); }
+            catch (_) { return ""; }
+        };
+        let url = "", title = "";
+        const moz = get("text/x-moz-url").split(/\r?\n/);
+        if (moz.length > 1 && normalizedBookmarkUrl(moz[0])) {
+            url = moz[0];
+            title = moz.slice(1).join(" ");
+        }
+        if (!url) {
+            url = get("text/uri-list").split(/\r?\n/).map(x => x.trim())
+                .find(x => x && !x.startsWith("#") && normalizedBookmarkUrl(x)) || "";
+        }
+        // HTML provides the human-readable bookmark title in many browsers.
+        const html = get("text/html");
+        if (html) {
+            // Parsing into an inert template prevents bookmark HTML from becoming live DOM.
+            const template = document.createElement("template");
+            template.innerHTML = html;
+            const anchor = template.content.querySelector("a[href]");
+            if (anchor) {
+                if (!url) url = anchor.getAttribute("href") || "";
+                if (!title) title = anchor.textContent || "";
+            }
+        }
+        const plain = get("text/plain");
+        if (!url && plain) {
+            const lines = plain.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+            url = lines.find(x => normalizedBookmarkUrl(x)) || "";
+            if (!title) title = lines.find(x => x !== url) || "";
+        }
+        const safeUrl = normalizedBookmarkUrl(url);
+        if (!safeUrl) return null;
+        const hostname = new URL(safeUrl).hostname.replace(/^www\./i, "");
+        const fallback = hostname.includes(".") && !/^[\d.]+$/.test(hostname)
+            ? hostname.split(".")[0].replace(/[-_]/g, " ") : hostname;
+        title = String(title || fallback.replace(/\b[a-z]/g, c => c.toUpperCase())).replace(/\s+/g, " ").trim().slice(0, 100);
+        return { url: safeUrl, title: title || hostname };
+    }
+
+    function suggestedBookmarkIcon(bookmark) {
+        const text = `${new URL(bookmark.url).hostname} ${bookmark.title}`.toLowerCase();
+        const names = [
+            ["proxmox-backup-server", /\b(?:pbs|proxmox[ -]?backup)\b/],
+            ["proxmox", /\bproxmox\b/], ["jellyfin", /\bjellyfin\b/],
+            ["docker", /\bdocker\b/], ["synology", /\bsynology\b/],
+            ["checkmk", /\bcheckmk\b/], ["uptime-kuma", /\buptime[ .-]?kuma\b/],
+            ["portainer", /\bportainer\b/], ["home-assistant", /\bhome[ .-]?assistant\b/],
+            ["grafana", /\bgrafana\b/], ["unifi", /\bunifi\b/],
+            ["github", /\bgithub\b/], ["truenas", /\btruenas\b/]
+        ];
+        const match = names.find(([, pattern]) => pattern.test(text));
+        return match ? `di:${match[0]}` : "🌐";
+    }
+
+    function findBookmarkDuplicate(url) {
+        const normal = normalizedBookmarkUrl(url);
+        if (!normal) return null;
+        for (const section of state.config.sections) {
+            for (const item of section.items) {
+                if (normalizedBookmarkUrl(item.url) === normal) return { section: section.title, name: item.name };
+            }
+        }
+        return null;
+    }
+
+    function clearDropHighlights() {
+        elements.dashboard.querySelectorAll(".bookmark-drop-active, .drag-over")
+            .forEach(element => element.classList.remove("bookmark-drop-active", "drag-over"));
+    }
+
+    function openBookmarkImportModal(sectionIndex, bookmark) {
+        if (!state.editMode || !state.authenticated || !state.config.sections[sectionIndex]) return;
+        const content = document.createElement("div");
+        content.className = "bookmark-import-modal";
+        content.innerHTML = `
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">Add Bookmark</h2>
+                    <p class="modal-subtitle">Review the bookmark before adding it to the dashboard.</p>
+                </div>
+                <button class="modal-close" type="button" aria-label="Close">×</button>
+            </div>
+            <div class="modal-grid">
+                <form id="bookmarkHostForm" novalidate></form>
+                <aside class="bookmark-import-aside">
+                    <h3>Live Preview</h3><div id="bookmarkHostPreview" class="preview-card"></div>
+                    <h3>Icon Picker</h3><div id="bookmarkIconPicker"></div>
+                </aside>
+            </div>
+        `;
+        const form = content.querySelector("#bookmarkHostForm");
+        form.append(createSelectField("Section", "bookmarkSectionIndex", state.config.sections.map((section, index) =>
+            ({ value: String(index), label: section.title })), String(sectionIndex)));
+        form.append(createInputField("Name", "bookmarkHostName", "Bookmark name", bookmark.title));
+        form.append(createInputField("URL / IP", "bookmarkHostUrl", "https://example.com", bookmark.url));
+        form.append(createTextAreaField("Description (optional)", "bookmarkHostDescription", "Short description"));
+        const icon = suggestedBookmarkIcon(bookmark);
+        form.append(createSelectField("Icon", "bookmarkHostIcon", iconOptions(ALL_ICONS, icon), icon));
+        const duplicateWarning = document.createElement("p");
+        duplicateWarning.className = "bookmark-duplicate-warning";
+        duplicateWarning.setAttribute("role", "status");
+        form.append(duplicateWarning);
+        const duplicateChoice = createCheckboxField("Add even if this URL already exists", "bookmarkAllowDuplicate", false);
+        duplicateChoice.classList.add("bookmark-duplicate-choice");
+        form.append(duplicateChoice);
+        const advanced = document.createElement("details");
+        advanced.className = "bookmark-advanced";
+        const summary = document.createElement("summary");
+        summary.textContent = "Advanced: ID and health checks";
+        advanced.append(summary);
+        advanced.append(createInputField("ID (unique)", "bookmarkHostId", "e.g. my-new-host", uniqueHostId(slugify(bookmark.title))));
+        appendCheckFields(advanced, "bookmarkHost");
+        advanced.append(createCheckboxField("Invert status", "bookmarkHostInvert", false));
+        form.append(advanced);
+        const actions = document.createElement("div");
+        actions.className = "form-actions";
+        actions.append(createButton("Cancel", "button button-secondary", closeModal));
+        actions.append(createButton("Add Bookmark", "button button-success", null, "submit"));
+        form.append(actions);
+        const preview = content.querySelector("#bookmarkHostPreview");
+        content.querySelector("#bookmarkIconPicker").append(mountIconPicker(form.querySelector("#bookmarkHostIcon"), update));
+        function update() {
+            updateHostPreview(form, preview);
+            const duplicate = findBookmarkDuplicate(form.querySelector("#bookmarkHostUrl").value);
+            duplicateWarning.hidden = !duplicate;
+            duplicateChoice.hidden = !duplicate;
+            duplicateWarning.textContent = duplicate ? `This URL already exists as “${duplicate.name}” in “${duplicate.section}”.` : "";
+            if (!duplicate) duplicateChoice.querySelector("input").checked = false;
+        }
+        form.addEventListener("input", update);
+        form.addEventListener("change", update);
+        form.querySelector("#bookmarkHostName").addEventListener("input", () => {
+            const id = form.querySelector("#bookmarkHostId");
+            if (!id.dataset.touched) id.value = uniqueHostId(slugify(form.querySelector("#bookmarkHostName").value));
+        });
+        form.querySelector("#bookmarkHostId").addEventListener("input", event => { event.target.dataset.touched = "true"; });
+        form.addEventListener("submit", async event => {
+            event.preventDefault();
+            if (!state.editMode || !state.authenticated) return;
+            const targetIndex = Number(form.querySelector("#bookmarkSectionIndex").value);
+            if (!Number.isInteger(targetIndex) || !state.config.sections[targetIndex]) {
+                notify("warning", "Invalid section", "Choose a valid section.");
+                return;
+            }
+            const data = readHostForm(form);
+            const safeUrl = normalizedBookmarkUrl(data.url);
+            if (!safeUrl) {
+                notify("warning", "Invalid bookmark URL", "Only HTTP(S) links without embedded passwords are accepted.");
+                return;
+            }
+            data.url = safeUrl;
+            const error = validateHost(data);
+            if (error) return notify("warning", "Validation failed", error);
+            if (findBookmarkDuplicate(data.url) && !form.querySelector("#bookmarkAllowDuplicate").checked) {
+                return notify("warning", "Duplicate bookmark", "This URL is already saved. Confirm the duplicate to add it again.");
+            }
+            const saved = await mutateAndSave(() => {
+                state.config.sections[targetIndex].items.push(data);
+                state.selectedSectionIndex = targetIndex;
+            }, "Bookmark added");
+            if (saved) closeModal();
+        });
+        openModal(content);
+        content.querySelector(".modal-close").addEventListener("click", closeModal);
+        update();
+        form.querySelector("#bookmarkHostName").focus();
+    }
+
     function handleSectionDragOver(event) {
-        if (state.drag?.type !== "section") return;
-        event.preventDefault();
-        event.currentTarget.classList.add("drag-over");
+        if (state.drag?.type === "section") {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            event.currentTarget.classList.add("drag-over");
+        } else if (isExternalBookmarkDrag(event)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+            event.currentTarget.classList.add("bookmark-drop-active");
+        }
     }
 
     function handleSectionDrop(event, targetSectionIndex) {
-        if (state.drag?.type !== "section") return;
+        if (state.drag?.type === "section") {
+            event.preventDefault();
+            event.currentTarget.classList.remove("drag-over");
+            const from = state.drag.fromSectionIndex;
+            state.drag = null;
+            if (from === targetSectionIndex) return;
+            mutateAndSave(() => {
+                const [section] = state.config.sections.splice(from, 1);
+                const to = from < targetSectionIndex ? targetSectionIndex - 1 : targetSectionIndex;
+                state.config.sections.splice(to, 0, section);
+            }, "Section order saved");
+            return;
+        }
+        if (!state.editMode || !state.authenticated || !isExternalBookmarkDrag(event)) return;
         event.preventDefault();
-        event.currentTarget.classList.remove("drag-over");
-        const from = state.drag.fromSectionIndex;
-        state.drag = null;
-        if (from === targetSectionIndex) return;
-        mutateAndSave(() => {
-            const [section] = state.config.sections.splice(from, 1);
-            const to = from < targetSectionIndex ? targetSectionIndex - 1 : targetSectionIndex;
-            state.config.sections.splice(to, 0, section);
-        }, "Section order saved");
+        event.stopPropagation();
+        clearDropHighlights();
+        const bookmark = bookmarkFromDrop(event.dataTransfer);
+        if (!bookmark) {
+            notify("warning", "Unsupported bookmark", "Drop a valid HTTP or HTTPS link without embedded credentials.");
+            return;
+        }
+        openBookmarkImportModal(targetSectionIndex, bookmark);
     }
 
     function handleHostGridDragOver(event) {
@@ -1907,7 +2133,8 @@
     }
 
     function handleDragLeave(event) {
-        event.currentTarget.classList.remove("drag-over");
+        if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget)) return;
+        event.currentTarget.classList.remove("drag-over", "bookmark-drop-active");
     }
 
     function moveHostAndSave(targetSectionIndex, targetItemIndex) {

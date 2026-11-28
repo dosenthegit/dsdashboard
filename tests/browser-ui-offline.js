@@ -86,8 +86,99 @@ async function main() {
         await cdp.eval(`document.querySelector('#hostCheckType').value='tcp';document.querySelector('#hostCheckPort').value='8443';document.querySelector('#editHostForm').requestSubmit()`);
         await waitUntil(async () => cdp.eval(`document.querySelector('#modalOverlay').classList.contains('hidden')`), "offline save form");
         assert.equal(await cdp.eval(`window.__mockApi.config.sections[0].items[0].checkPort`),8443);
+        // Bookmark drag/drop must be unavailable in view mode and only active after login.
+        await cdp.eval(`document.querySelector('#toolbarExitButton').click()`);
+        assert.equal(await cdp.eval(`document.querySelector('.bookmark-drop-zone') === null`), true);
+        await cdp.eval(`document.querySelector('#editModeButton').click()`);
+        await waitUntil(async () => cdp.eval(`document.body.classList.contains('edit-mode')`), "return to edit mode");
+        assert.equal(await cdp.eval(`document.querySelectorAll('.bookmark-drop-zone').length`), 1);
+
+        // Chrome/Edge: URI list + HTML link title, dropped on a card (bubbles to section).
+        await cdp.eval(String.raw`(() => {
+            const transfer = new DataTransfer();
+            transfer.setData('text/uri-list', 'https://admin.example.net/ui');
+            transfer.setData('text/html', '<a href="https://admin.example.net/ui">My Router</a>');
+            const card = document.querySelector('.service-card');
+            card.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+            card.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        })()`);
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkHostForm #bookmarkHostName')?.value`), 'My Router');
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkHostForm #bookmarkHostUrl')?.value`), 'https://admin.example.net/ui');
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkSectionIndex')?.value`), '0');
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkDuplicateWarning') === null`), true);
+        await cdp.eval(`document.querySelector('#bookmarkHostForm').requestSubmit()`);
+        await waitUntil(async () => cdp.eval(`window.__mockApi.config.sections[0].items.length === 3 && document.querySelector('#modalOverlay').classList.contains('hidden')`), "bookmark saved");
+        assert.equal(await cdp.eval(`window.__mockApi.config.sections[0].items[2].url`), 'https://admin.example.net/ui');
+
+        // Firefox: text/x-moz-url, including its bookmark title. Duplicates require opt-in.
+        await cdp.eval(String.raw`(() => {
+            const transfer = new DataTransfer();
+            transfer.setData('text/x-moz-url', 'https://admin.example.net/ui\nSecond Router');
+            document.querySelector('.dashboard-section').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        })()`);
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkHostForm #bookmarkHostName')?.value`), 'Second Router');
+        assert.equal(await cdp.eval(`document.querySelector('.bookmark-duplicate-warning')?.hidden`), false);
+        await cdp.eval(`document.querySelector('#bookmarkHostForm').requestSubmit()`);
+        assert.equal(await cdp.eval(`window.__mockApi.config.sections[0].items.length`), 3);
+        await cdp.eval(`document.querySelector('#bookmarkAllowDuplicate').checked=true; document.querySelector('#bookmarkHostForm').requestSubmit()`);
+        await waitUntil(async () => cdp.eval(`window.__mockApi.config.sections[0].items.length === 4 && document.querySelector('#modalOverlay').classList.contains('hidden')`), "confirmed duplicate saved");
+
+        // Bad schemes and embedded credentials are rejected without opening an import modal.
+        for (const href of ['javascript:alert(1)', 'https://user:secret@example.net/']) {
+            await cdp.eval(`(() => {
+                const transfer = new DataTransfer();
+                transfer.setData('text/uri-list', ${JSON.stringify(href)});
+                document.querySelector('.dashboard-section').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+            })()`);
+            assert.equal(await cdp.eval(`document.querySelector('#bookmarkHostForm') === null`), true);
+            assert.equal(await cdp.eval(`window.__mockApi.config.sections[0].items.length`), 4);
+        }
+
+        // Internal host move must continue to work and must not open bookmark import.
+        await cdp.eval(String.raw`(() => {
+            const transfer = new DataTransfer();
+            const handle = document.querySelector('.service-card[data-item-index="0"] .card-drag-handle');
+            handle.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+            document.querySelector('.services-grid').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+            handle.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        })()`);
+        await waitUntil(async () => cdp.eval(`window.__mockApi.config.sections[0].items[3].id === 'proxmox'`), "internal host reorder");
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkHostForm') === null`), true);
+
+        // Explicit section targeting and plain-text links without supplied titles.
+        await cdp.eval(`(() => {
+            const field = document.querySelector('#sideNewSectionTitle');
+            field.value = 'Network';
+            field.closest('form').requestSubmit();
+        })()`);
+        await waitUntil(async () => cdp.eval(`window.__mockApi.config.sections.length === 2 && document.querySelectorAll('.bookmark-drop-zone').length === 2`), "second section created");
+        await cdp.eval(String.raw`(() => {
+            const transfer = new DataTransfer();
+            transfer.setData('text/plain', 'https://network.example.net/console');
+            const second = document.querySelectorAll('.dashboard-section')[1];
+            second.dispatchEvent(new DragEvent('dragover', {bubbles:true,cancelable:true,dataTransfer:transfer}));
+            second.dispatchEvent(new DragEvent('drop', {bubbles:true,cancelable:true,dataTransfer:transfer}));
+        })()`);
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkSectionIndex')?.value`), '1');
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkHostName')?.value`), 'Network');
+        await cdp.eval(`document.querySelector('#bookmarkHostForm').requestSubmit()`);
+        await waitUntil(async () => cdp.eval(`window.__mockApi.config.sections[1].items.length === 1 && document.querySelector('#modalOverlay').classList.contains('hidden')`), "bookmark saved to targeted section");
+        assert.equal(await cdp.eval(`window.__mockApi.config.sections[1].items[0].url`), 'https://network.example.net/console');
+
+        // Existing section reordering must still use the internal drag type.
+        await cdp.eval(String.raw`(() => {
+            const transfer = new DataTransfer();
+            const sections = document.querySelectorAll('.dashboard-section');
+            const handle = sections[1].querySelector('.section-heading .drag-handle');
+            handle.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+            sections[0].dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+            handle.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        })()`);
+        await waitUntil(async () => cdp.eval(`window.__mockApi.config.sections[0].title === 'Network'`), "internal section reorder");
+        assert.equal(await cdp.eval(`document.querySelector('#bookmarkHostForm') === null`), true);
+
         assert.deepEqual(cdp.exceptions, []);
-        console.log("Offline Chromium UI test passed: initial page, search, history, login, icon picker and saved checks.");
+        console.log("Offline Chromium UI test passed: initial UI, edit mode, bookmark imports, duplicates, unsafe URL rejection and existing host/section drag/drop.");
     } finally {
         if (cdp) cdp.close();
         browser.kill('SIGTERM');
